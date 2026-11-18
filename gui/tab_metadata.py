@@ -1,7 +1,5 @@
 """
-Tab 1: Tag & Metadata Editor
-View & edit tags, inspect artwork specs, and choose cover art from either
-an image file OR directly extract from an existing music track.
+Tab 1: Metadata & Artwork Editor (De-cluttered, clean Apple-like aesthetic)
 """
 
 import os
@@ -22,73 +20,56 @@ class MetadataEditorTab(QWidget):
         self.current_meta = None
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(14)
 
         # Header
-        head_layout = QVBoxLayout()
-        head_layout.setSpacing(4)
-        title = QLabel("TAG & ARTWORK EDITOR")
+        title = QLabel("Metadata & Artwork")
         title.setProperty("class", "ViewHeader")
-        desc = QLabel("Edit ID3 / Vorbis tags and embed hardware-compliant baseline covers")
-        desc.setProperty("class", "ViewSubheader")
-        head_layout.addWidget(title)
-        head_layout.addWidget(desc)
-        layout.addLayout(head_layout)
+        layout.addWidget(title)
 
         # Drop Zone
-        self.drop_zone = FileDropZone(
-            title="DROP AUDIO FILES OR ALBUMS HERE",
-            subtitle="FLAC • MP3 • M4A • OGG • OPUS"
-        )
+        self.drop_zone = FileDropZone(title="Drop audio files or folders here")
         self.drop_zone.files_dropped.connect(self.load_files)
         layout.addWidget(self.drop_zone)
 
         # Content Split
         content_layout = QHBoxLayout()
-        content_layout.setSpacing(16)
+        content_layout.setSpacing(14)
 
-        # Left: Clean Table
+        # Left Table
         self.table = QTableWidget()
         self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["#", "TITLE", "ARTIST", "COVER"])
+        self.table.setHorizontalHeaderLabels(["#", "Title", "Artist", "Cover"])
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.table.setColumnWidth(0, 42)
+        self.table.setColumnWidth(0, 36)
         self.table.setColumnWidth(2, 140)
-        self.table.setColumnWidth(3, 85)
+        self.table.setColumnWidth(3, 80)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.itemSelectionChanged.connect(self._on_selection_changed)
         content_layout.addWidget(self.table, stretch=3)
 
-        # Right: Inspector Card
+        # Right Inspector Card
         self.inspector_card = QFrame()
         self.inspector_card.setProperty("class", "Card")
-        self.inspector_card.setFixedWidth(340)
+        self.inspector_card.setFixedWidth(300)
         card_layout = QVBoxLayout(self.inspector_card)
-        card_layout.setContentsMargins(18, 18, 18, 18)
+        card_layout.setContentsMargins(16, 16, 16, 16)
         card_layout.setSpacing(10)
 
-        # Artwork Header
-        art_header = QHBoxLayout()
-        art_title = QLabel("ALBUM ARTWORK")
-        art_title.setStyleSheet("font-size: 10px; font-weight: 700; letter-spacing: 0.8px; color: #8A8A93;")
-        art_header.addWidget(art_title)
-        art_header.addStretch()
-        card_layout.addLayout(art_header)
-
-        # Artwork Drop Zone
-        self.art_zone = ArtworkDropZone(size=170)
+        # Cover
+        self.art_zone = ArtworkDropZone(size=140)
         self.art_zone.artwork_changed.connect(self._on_art_dropped)
         card_layout.addWidget(self.art_zone, alignment=Qt.AlignmentFlag.AlignCenter)
 
-        # Buttons to choose art from image file OR extract from existing song
+        # Art action buttons
         art_btn_row = QHBoxLayout()
         art_btn_row.setSpacing(6)
-        choose_img_btn = QPushButton("From Image...")
+        choose_img_btn = QPushButton("From Image")
         choose_img_btn.setProperty("class", "GhostBtn")
         choose_img_btn.clicked.connect(self.art_zone.choose_from_image)
 
-        choose_music_btn = QPushButton("From Song...")
+        choose_music_btn = QPushButton("From Song")
         choose_music_btn.setProperty("class", "GhostBtn")
         choose_music_btn.clicked.connect(self.art_zone.choose_from_audio)
 
@@ -96,28 +77,26 @@ class MetadataEditorTab(QWidget):
         art_btn_row.addWidget(choose_music_btn)
         card_layout.addLayout(art_btn_row)
 
-        # Art status info
-        self.art_status_label = QLabel("No cover embedded")
-        self.art_status_label.setStyleSheet("color: #6A6A74; font-size: 10px; font-family: monospace;")
+        self.art_status_label = QLabel("No cover")
+        self.art_status_label.setStyleSheet("color: #727280; font-size: 11px;")
         self.art_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(self.art_status_label)
 
-        # Metadata Form Fields
+        # Form fields
         self.fields = {}
         form_keys = [
             ('Title', 'title'),
             ('Artist', 'artist'),
             ('Album', 'album'),
-            ('Album Artist', 'albumartist'),
-            ('Track #', 'track'),
+            ('Track', 'track'),
             ('Year', 'year'),
             ('Genre', 'genre')
         ]
         for label_text, key in form_keys:
             row = QHBoxLayout()
-            lbl = QLabel(f"{label_text}:")
-            lbl.setFixedWidth(82)
-            lbl.setStyleSheet("color: #7A7A84; font-size: 11px; font-weight: 600;")
+            lbl = QLabel(label_text)
+            lbl.setFixedWidth(55)
+            lbl.setStyleSheet("color: #8C8C9A; font-size: 11px;")
             edit = QLineEdit()
             self.fields[key] = edit
             row.addWidget(lbl)
@@ -131,7 +110,7 @@ class MetadataEditorTab(QWidget):
         self.remove_art_btn.setProperty("class", "SecondaryBtn")
         self.remove_art_btn.clicked.connect(self.remove_current_art)
 
-        self.save_btn = QPushButton("Save Tags")
+        self.save_btn = QPushButton("Save")
         self.save_btn.setProperty("class", "PrimaryBtn")
         self.save_btn.clicked.connect(self.save_current_tags)
 
@@ -151,7 +130,7 @@ class MetadataEditorTab(QWidget):
             self.table.setItem(row, 1, QTableWidgetItem(meta.get('title') or os.path.basename(path)))
             self.table.setItem(row, 2, QTableWidgetItem(meta.get('artist') or "—"))
             
-            art_text = "OK" if meta.get('has_art') else "None"
+            art_text = "OK" if meta.get('has_art') else "—"
             if meta.get('art_info') and meta['art_info']['needs_fix']:
                 art_text = "Fix"
             art_item = QTableWidgetItem(art_text)
@@ -177,15 +156,15 @@ class MetadataEditorTab(QWidget):
                 info = self.current_meta['art_info']
                 status_text = f"{info['format']} {info['size'][0]}x{info['size'][1]}"
                 if info['is_progressive']:
-                    status_text += " • Progressive"
+                    status_text += " (Progressive)"
                 elif info['needs_fix']:
-                    status_text += " • Non-Baseline"
+                    status_text += " (Non-Baseline)"
                 else:
-                    status_text += " • Baseline JPEG"
+                    status_text += " (Baseline)"
                 self.art_status_label.setText(status_text)
             else:
                 self.art_zone.set_artwork(None)
-                self.art_status_label.setText("No cover embedded")
+                self.art_status_label.setText("No cover")
 
     def _on_art_dropped(self, img_bytes):
         if not self.current_meta:
@@ -193,7 +172,7 @@ class MetadataEditorTab(QWidget):
         path = self.current_meta['filepath']
         success = set_artwork(path, img_bytes, standardize_baseline=True)
         if success:
-            self.art_status_label.setText("Cover Updated • Baseline JPEG")
+            self.art_status_label.setText("Cover Updated (Baseline)")
             self._update_table_row_art(self.table.currentRow(), True)
 
     def save_current_tags(self):
@@ -216,11 +195,11 @@ class MetadataEditorTab(QWidget):
         path = self.current_meta['filepath']
         if remove_artwork(path):
             self.art_zone.set_artwork(None)
-            self.art_status_label.setText("Cover removed")
+            self.art_status_label.setText("No cover")
             self._update_table_row_art(self.table.currentRow(), False)
 
     def _update_table_row_art(self, row, has_art):
         if row >= 0 and row < self.table.rowCount():
-            item = QTableWidgetItem("OK" if has_art else "None")
+            item = QTableWidgetItem("OK" if has_art else "—")
             item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 3, item)

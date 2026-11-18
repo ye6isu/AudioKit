@@ -1,7 +1,5 @@
 """
-Tab 2: Baseline JPEG Converter (Hardware Compliance Engine)
-Scans audio files, detects non-baseline and progressive artwork,
-and converts them into compliant Baseline RGB JPEG format.
+Tab 2: Baseline JPEG Converter (De-cluttered)
 """
 
 import os
@@ -38,21 +36,20 @@ class ConverterWorker(QThread):
                     if info['needs_fix'] or info['is_progressive']:
                         set_artwork(path, raw_art, standardize_baseline=True)
                         fixed_count += 1
-                        msg = f"[FIXED] {fname} -> Baseline RGB JPEG"
+                        msg = f"Fixed: {fname}"
                     else:
-                        msg = f"[OK]    {fname} -> Already Baseline compliant"
+                        msg = f"OK: {fname}"
                 else:
-                    msg = f"[SKIP]  {fname} -> No embedded cover art"
+                    msg = f"No cover: {fname}"
 
                 ext = os.path.splitext(path)[1].lower()
                 if ext == '.flac':
                     flac_obj = FLAC(path)
                     if deduplicate_tags(flac_obj.tags):
                         flac_obj.save()
-                        msg += " (tags deduplicated)"
 
             except Exception as e:
-                msg = f"[ERR]   {fname}: {e}"
+                msg = f"Error {fname}: {e}"
 
             self.progress.emit(idx + 1, total, msg)
 
@@ -66,57 +63,49 @@ class BaselineConverterTab(QWidget):
         self.worker = None
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(14)
 
         # Header
-        head_layout = QVBoxLayout()
-        head_layout.setSpacing(4)
-        title = QLabel("BASELINE JPEG CONVERTER")
+        title = QLabel("Baseline Converter")
         title.setProperty("class", "ViewHeader")
-        desc = QLabel("Standardize artwork to Baseline RGB JPEG (Quality 95) for dedicated and vintage hardware players")
-        desc.setProperty("class", "ViewSubheader")
-        head_layout.addWidget(title)
-        head_layout.addWidget(desc)
-        layout.addLayout(head_layout)
+        layout.addWidget(title)
 
         # Drop Zone
-        self.drop_zone = FileDropZone(
-            title="DROP TRACKS OR FOLDERS TO INSPECT ARTWORK ENCODING",
-            subtitle="Identifies progressive, CMYK, or non-standard JPEG/PNG tags"
-        )
+        self.drop_zone = FileDropZone(title="Drop audio files or folders here")
         self.drop_zone.files_dropped.connect(self.on_files_dropped)
         layout.addWidget(self.drop_zone)
 
         # Table
         self.table = QTableWidget()
         self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["FILE", "TYPE", "CURRENT ART SPEC", "STATUS"])
+        self.table.setHorizontalHeaderLabels(["File", "Format", "Cover Specs", "Status"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.table.setColumnWidth(1, 60)
+        self.table.setColumnWidth(1, 70)
         self.table.setColumnWidth(2, 220)
-        self.table.setColumnWidth(3, 110)
+        self.table.setColumnWidth(3, 100)
         layout.addWidget(self.table)
 
-        # Gauge Progress
+        # Progress
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
 
         # Action Bar
         bottom_layout = QHBoxLayout()
-        self.fix_btn = QPushButton("CONVERT ALL TO BASELINE JPEG")
+        self.fix_btn = QPushButton("Convert All to Baseline")
         self.fix_btn.setProperty("class", "PrimaryBtn")
         self.fix_btn.setEnabled(False)
         self.fix_btn.clicked.connect(self.start_fix)
+        bottom_layout.addStretch()
         bottom_layout.addWidget(self.fix_btn)
         layout.addLayout(bottom_layout)
 
-        # Diagnostic Terminal
+        # Log
         self.console = QTextEdit()
         self.console.setObjectName("LogConsole")
         self.console.setReadOnly(True)
-        self.console.setFixedHeight(95)
+        self.console.setFixedHeight(85)
         layout.addWidget(self.console)
 
     def on_files_dropped(self, paths):
@@ -137,12 +126,12 @@ class BaselineConverterTab(QWidget):
                 if info['is_progressive']:
                     art_status += " (Progressive)"
                 if info['needs_fix']:
-                    status_str = "NEEDS FIX"
+                    status_str = "Needs Fix"
                     needs_fix_count += 1
                 else:
-                    status_str = "COMPLIANT"
+                    status_str = "Compliant"
             else:
-                art_status = "No Artwork"
+                art_status = "No Cover"
                 status_str = "—"
 
             item_spec = QTableWidgetItem(art_status)
@@ -151,7 +140,7 @@ class BaselineConverterTab(QWidget):
             self.table.setItem(row, 2, item_spec)
             self.table.setItem(row, 3, item_status)
 
-        self.console.append(f">> Scanned {len(paths)} tracks. {needs_fix_count} track(s) require Baseline conversion.")
+        self.console.append(f"Loaded {len(paths)} tracks ({needs_fix_count} need baseline fix).")
         self.fix_btn.setEnabled(len(paths) > 0)
 
     def start_fix(self):
@@ -174,5 +163,5 @@ class BaselineConverterTab(QWidget):
     def _on_finished(self, fixed_count, total_count):
         self.progress_bar.setVisible(False)
         self.fix_btn.setEnabled(True)
-        self.console.append(f">> Finished. {fixed_count} of {total_count} files standardized.")
+        self.console.append(f"Finished. Standardized {fixed_count} of {total_count} files.")
         self.on_files_dropped(self.file_list)

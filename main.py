@@ -1,7 +1,5 @@
 """
-Audio Kit Main Application Window
-Refined Teenage Engineering & Apple utility aesthetic:
-Matte chassis, tactile navigation sidebar, mechanical keycap buttons.
+Audio Kit Main Application Window (Clean, de-cluttered)
 """
 
 import sys
@@ -21,9 +19,9 @@ from gui.tab_transfer import ArtTransferTab
 class AudioKitMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("AUDIO KIT")
-        self.resize(1120, 740)
-        self.setMinimumSize(960, 620)
+        self.setWindowTitle("Audio Kit")
+        self.resize(1020, 680)
+        self.setMinimumSize(900, 580)
 
         central_widget = QWidget()
         central_widget.setObjectName("MainContainer")
@@ -33,36 +31,26 @@ class AudioKitMainWindow(QMainWindow):
         root_layout.setContentsMargins(0, 0, 0, 0)
         root_layout.setSpacing(0)
 
-        # --- Sidebar ---
+        # Sidebar
         sidebar = QFrame()
         sidebar.setObjectName("Sidebar")
-        sidebar.setFixedWidth(220)
+        sidebar.setFixedWidth(200)
         side_layout = QVBoxLayout(sidebar)
-        side_layout.setContentsMargins(18, 28, 18, 28)
-        side_layout.setSpacing(10)
+        side_layout.setContentsMargins(14, 20, 14, 20)
+        side_layout.setSpacing(6)
 
-        # Branding Header
-        brand_row = QHBoxLayout()
-        title_label = QLabel("AUDIO KIT")
+        title_label = QLabel("Audio Kit")
         title_label.setObjectName("AppBrand")
-        brand_tag = QLabel("STUDIO")
-        brand_tag.setObjectName("BrandTag")
-        brand_row.addWidget(title_label)
-        brand_row.addWidget(brand_tag)
-        brand_row.addStretch()
-        side_layout.addLayout(brand_row)
+        title_label.setStyleSheet("font-size: 16px; font-weight: 700; color: #FFFFFF; padding-bottom: 12px; padding-left: 6px;")
+        side_layout.addWidget(title_label)
 
-        sub_label = QLabel("AUDIO UTILITY SYSTEM")
-        sub_label.setStyleSheet("font-size: 9px; font-weight: 700; color: #585862; letter-spacing: 1px; margin-bottom: 16px;")
-        side_layout.addWidget(sub_label)
-
-        # Navigation Items
+        # Nav items
         self.nav_buttons = []
         nav_items = [
-            ("TAG & ART EDITOR", 0),
-            ("BASELINE CONVERTER", 1),
-            ("REPLAYGAIN ENGINE", 2),
-            ("ARTWORK TRANSFER", 3)
+            ("Metadata", 0),
+            ("Baseline Converter", 1),
+            ("ReplayGain", 2),
+            ("Artwork Transfer", 3)
         ]
 
         for text, index in nav_items:
@@ -75,20 +63,9 @@ class AudioKitMainWindow(QMainWindow):
 
         side_layout.addStretch()
 
-        # Machine Specs Footer
-        footer_box = QVBoxLayout()
-        footer_box.setSpacing(2)
-        f_ver = QLabel("SYS VER 1.0.0")
-        f_ver.setStyleSheet("color: #4C4C54; font-size: 9px; font-weight: 700; letter-spacing: 0.8px;")
-        f_spec = QLabel("EBU R128 • BASELINE JPEG")
-        f_spec.setStyleSheet("color: #3C3C44; font-size: 8px; font-weight: 600; letter-spacing: 0.5px;")
-        footer_box.addWidget(f_ver)
-        footer_box.addWidget(f_spec)
-        side_layout.addLayout(footer_box)
-
         root_layout.addWidget(sidebar)
 
-        # --- Content Area ---
+        # Content Area
         self.content_stack = QStackedWidget()
         self.content_stack.setObjectName("ContentFrame")
 

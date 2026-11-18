@@ -1,5 +1,5 @@
 """
-Custom UI Components for Audio Kit (Tactile / Industrial TE & Apple aesthetic)
+Custom Clean UI Components for Audio Kit
 """
 
 import os
@@ -13,36 +13,27 @@ from core.engine import SUPPORTED_AUDIO_EXTENSIONS, SUPPORTED_IMAGE_EXTENSIONS, 
 class FileDropZone(QFrame):
     files_dropped = pyqtSignal(list)
 
-    def __init__(self, title="DROP AUDIO FILES OR FOLDERS", subtitle="FLAC • MP3 • M4A • OGG • OPUS", parent=None):
+    def __init__(self, title="Drop audio files or folders here", parent=None):
         super().__init__(parent)
         self.setProperty("class", "DropZone")
         self.setAcceptDrops(True)
-        self.setMinimumHeight(110)
+        self.setFixedHeight(72)
 
-        layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setSpacing(6)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(20, 10, 20, 10)
+        layout.setSpacing(12)
 
         self.title_label = QLabel(title)
-        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title_label.setStyleSheet("font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #ECECED; background: transparent;")
+        self.title_label.setStyleSheet("font-size: 13px; font-weight: 500; color: #E2E2E8; background: transparent;")
 
-        self.sub_label = QLabel(subtitle)
-        self.sub_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.sub_label.setStyleSheet("font-size: 10px; font-weight: 500; color: #666670; letter-spacing: 0.5px; background: transparent;")
-
-        browse_btn = QPushButton("SELECT FILES")
+        browse_btn = QPushButton("Browse")
         browse_btn.setProperty("class", "GhostBtn")
-        browse_btn.setFixedWidth(110)
+        browse_btn.setFixedWidth(80)
         browse_btn.clicked.connect(self._browse_files)
 
-        btn_box = QHBoxLayout()
-        btn_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        btn_box.addWidget(browse_btn)
-
         layout.addWidget(self.title_label)
-        layout.addWidget(self.sub_label)
-        layout.addLayout(btn_box)
+        layout.addStretch()
+        layout.addWidget(browse_btn)
 
     def _browse_files(self):
         files, _ = QFileDialog.getOpenFileNames(
@@ -72,14 +63,9 @@ class FileDropZone(QFrame):
 
 
 class ArtworkDropZone(QFrame):
-    """
-    Cover art frame with dual source loading:
-    - Drag & drop image OR audio file
-    - Click to select image OR music file to extract from
-    """
     artwork_changed = pyqtSignal(bytes)
 
-    def __init__(self, size=190, parent=None):
+    def __init__(self, size=150, parent=None):
         super().__init__(parent)
         self.setFixedSize(size, size)
         self.setProperty("class", "DropZone")
@@ -88,11 +74,11 @@ class ArtworkDropZone(QFrame):
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setContentsMargins(6, 6, 6, 6)
+        layout.setContentsMargins(4, 4, 4, 4)
 
-        self.preview_label = QLabel("NO COVER\n(DROP IMAGE OR SONG)")
+        self.preview_label = QLabel("Drop Cover Here\n(Image or Song)")
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_label.setStyleSheet("color: #555560; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; background: transparent;")
+        self.preview_label.setStyleSheet("color: #6C6C78; font-size: 11px; font-weight: 500; background: transparent;")
         self.preview_label.setScaledContents(True)
 
         layout.addWidget(self.preview_label)
@@ -104,16 +90,16 @@ class ArtworkDropZone(QFrame):
             pixmap.loadFromData(img_bytes)
             if not pixmap.isNull():
                 self.preview_label.setPixmap(pixmap.scaled(
-                    self.width() - 12, self.height() - 12,
+                    self.width() - 8, self.height() - 8,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 ))
                 return
-        self.preview_label.setText("NO COVER\n(DROP IMAGE OR SONG)")
+        self.preview_label.setText("Drop Cover Here\n(Image or Song)")
 
     def choose_from_image(self):
         f, _ = QFileDialog.getOpenFileName(
-            self, "Select Image File", "",
+            self, "Select Image", "",
             "Image Files (*.jpg *.jpeg *.png *.webp *.bmp *.tiff)"
         )
         if f:
@@ -124,7 +110,7 @@ class ArtworkDropZone(QFrame):
 
     def choose_from_audio(self):
         f, _ = QFileDialog.getOpenFileName(
-            self, "Select Audio File to Extract Art", "",
+            self, "Select Audio File", "",
             "Audio Files (*.flac *.mp3 *.m4a *.mp4 *.ogg)"
         )
         if f:

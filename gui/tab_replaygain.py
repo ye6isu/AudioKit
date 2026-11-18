@@ -1,7 +1,5 @@
 """
-Tab 3: ReplayGain Loudness Engine
-EBU R128 loudness matching (-18.00 LUFS target) and true peak calculation.
-ReplayGain 2.0 uses standard ITU-R BS.1770 / EBU R128 loudness measurement algorithms.
+Tab 3: ReplayGain Engine (De-cluttered)
 """
 
 import os
@@ -37,13 +35,13 @@ class LoudnessWorker(QThread):
                 peaks.append(peak)
                 gain_str = f"{gain_db:+.2f} dB"
                 peak_str = f"{peak:.4f}"
-                log = f"[EBU R128] {fname} | Measured: {loudness:.1f} LUFS -> Gain: {gain_str}"
+                log = f"{fname} -> {loudness:.1f} LUFS (Gain: {gain_str})"
             except Exception as e:
                 gains.append(0.0)
                 peaks.append(1.0)
-                gain_str = "ERR"
-                peak_str = "ERR"
-                log = f"[ERR]      {fname}: {e}"
+                gain_str = "Error"
+                peak_str = "Error"
+                log = f"Error {fname}: {e}"
 
             self.progress.emit(idx + 1, total, gain_str, peak_str, log)
 
@@ -67,36 +65,27 @@ class ReplayGainTab(QWidget):
         self.worker = None
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(28, 24, 28, 24)
-        layout.setSpacing(16)
+        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setSpacing(14)
 
         # Header
-        head_layout = QVBoxLayout()
-        head_layout.setSpacing(4)
-        title = QLabel("REPLAYGAIN LOUDNESS ENGINE")
+        title = QLabel("ReplayGain Engine")
         title.setProperty("class", "ViewHeader")
-        desc = QLabel("EBU R128 / ITU-R BS.1770 audio normalization target (-18.00 LUFS) with true sample peak detection")
-        desc.setProperty("class", "ViewSubheader")
-        head_layout.addWidget(title)
-        head_layout.addWidget(desc)
-        layout.addLayout(head_layout)
+        layout.addWidget(title)
 
         # Drop Zone
-        self.drop_zone = FileDropZone(
-            title="DROP ALBUM OR AUDIO TRACKS TO SCAN LOUDNESS",
-            subtitle="Calculates ITU-R BS.1770 track and album gain tags"
-        )
+        self.drop_zone = FileDropZone(title="Drop audio files or folders here")
         self.drop_zone.files_dropped.connect(self.on_files_dropped)
         layout.addWidget(self.drop_zone)
 
         # Table
         self.table = QTableWidget()
         self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["#", "TRACK FILE", "GAIN (dB)", "TRUE PEAK"])
+        self.table.setHorizontalHeaderLabels(["#", "File", "Gain", "Peak"])
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.table.setColumnWidth(0, 42)
-        self.table.setColumnWidth(2, 110)
-        self.table.setColumnWidth(3, 110)
+        self.table.setColumnWidth(0, 36)
+        self.table.setColumnWidth(2, 100)
+        self.table.setColumnWidth(3, 100)
         layout.addWidget(self.table)
 
         # Progress
@@ -106,10 +95,11 @@ class ReplayGainTab(QWidget):
 
         # Action Bar
         bottom_layout = QHBoxLayout()
-        self.calc_btn = QPushButton("CALCULATE & WRITE REPLAYGAIN TAGS")
+        self.calc_btn = QPushButton("Calculate & Apply Tags")
         self.calc_btn.setProperty("class", "PrimaryBtn")
         self.calc_btn.setEnabled(False)
         self.calc_btn.clicked.connect(self.start_replaygain)
+        bottom_layout.addStretch()
         bottom_layout.addWidget(self.calc_btn)
         layout.addLayout(bottom_layout)
 
@@ -117,7 +107,7 @@ class ReplayGainTab(QWidget):
         self.console = QTextEdit()
         self.console.setObjectName("LogConsole")
         self.console.setReadOnly(True)
-        self.console.setFixedHeight(95)
+        self.console.setFixedHeight(85)
         layout.addWidget(self.console)
 
     def on_files_dropped(self, paths):
@@ -125,15 +115,15 @@ class ReplayGainTab(QWidget):
         self.table.setRowCount(len(paths))
         for row, p in enumerate(paths):
             fname = os.path.basename(p)
-            self.table.setItem(row, 0, QTableWidgetItem(f"{row + 1:02d}"))
+            self.table.setItem(row, 0, QTableWidgetItem(f"{row + 1}"))
             self.table.setItem(row, 1, QTableWidgetItem(fname))
-            item_gain = QTableWidgetItem("QUEUED")
+            item_gain = QTableWidgetItem("Ready")
             item_gain.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item_peak = QTableWidgetItem("—")
             item_peak.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(row, 2, item_gain)
             self.table.setItem(row, 3, item_peak)
-        self.console.append(f">> Ready. {len(paths)} tracks loaded for loudness analysis.")
+        self.console.append(f"Loaded {len(paths)} tracks for loudness analysis.")
         self.calc_btn.setEnabled(len(paths) > 0)
 
     def start_replaygain(self):
@@ -164,4 +154,4 @@ class ReplayGainTab(QWidget):
     def _on_finished(self, total):
         self.progress_bar.setVisible(False)
         self.calc_btn.setEnabled(True)
-        self.console.append(f">> Normalization tags applied to {total} tracks.")
+        self.console.append(f"Complete. Tags written to {total} tracks.")
