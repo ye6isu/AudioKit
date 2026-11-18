@@ -1,8 +1,11 @@
 """
-Unified 2-Tab Desktop App for Audio Kit:
-1. "Library": Track list table + sleek horizontal metadata footer (Title, Artist, Album, Track, Year, Genre)
-   with dedicated Cover Slot (drag image/audio, copy/paste, or auto-convert to Baseline JPEG).
-2. "Loudness": Clean ReplayGain / EBU R128 (-18 LUFS) analyzer with batch calculate & tag.
+Unified 2-View Desktop Application for Audio Kit
+Refined based on real track visual review:
+- Hidden ugly vertical header column (no duplicate row numbers)
+- Generous track column width to avoid '10/...' truncation
+- Clean button typography ('Library & Tags', 'Scan & Tag ReplayGain')
+- Aligned table headers and input field heights
+- Balanced bottom metadata tray
 """
 
 import sys
@@ -17,17 +20,16 @@ from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QPixmap
 
 from core.engine import (
     scan_audio_files, read_audio_metadata, save_audio_metadata,
-    extract_artwork, set_artwork, remove_artwork, inspect_cover_art,
+    extract_artwork, set_artwork,
     calculate_loudness_and_peak, apply_replaygain_tags, DEFAULT_TARGET_LUFS,
     SUPPORTED_AUDIO_EXTENSIONS, SUPPORTED_IMAGE_EXTENSIONS
 )
 
-# High-taste Apple / Teenage Engineering stylesheet
 APP_QSS = """
 * {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
     font-size: 13px;
-    color: #ECECED;
+    color: #EDEDED;
     outline: none;
 }
 
@@ -48,13 +50,13 @@ QLabel#BrandTitle {
     letter-spacing: 0.5px;
 }
 
-/* Segmented tab buttons */
+/* Tab toggle buttons */
 QPushButton.TabBtn {
     background-color: transparent;
     color: #8C8C96;
     font-weight: 600;
     font-size: 12px;
-    padding: 6px 14px;
+    padding: 7px 16px;
     border-radius: 6px;
     border: none;
 }
@@ -65,11 +67,28 @@ QPushButton.TabBtn:hover {
 }
 
 QPushButton.TabBtn:checked {
-    background-color: #27272E;
+    background-color: #26262E;
     color: #FF5500;
 }
 
-/* Compact drop bar */
+/* Header action button */
+QPushButton#BatchFixBtn {
+    background-color: #1A1A1F;
+    color: #D4D4D8;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 6px;
+    padding: 6px 14px;
+    border: 1px solid #2B2B34;
+}
+
+QPushButton#BatchFixBtn:hover {
+    background-color: #24242C;
+    border-color: #383844;
+    color: #FFFFFF;
+}
+
+/* Drop bar */
 QFrame#DropBar {
     background-color: #131316;
     border: 1px dashed #282832;
@@ -81,7 +100,7 @@ QFrame#DropBar:hover {
     background-color: #17171C;
 }
 
-/* Tables */
+/* Clean Tables */
 QTableWidget {
     background-color: #121215;
     border: 1px solid #1F1F24;
@@ -94,18 +113,17 @@ QTableWidget {
 QHeaderView::section {
     background-color: #0F0F12;
     color: #7A7A85;
-    padding: 7px 10px;
+    padding: 8px 12px;
     border: none;
     border-bottom: 1px solid #1F1F24;
     font-weight: 600;
     font-size: 11px;
 }
 
-/* Bottom Inspector Panel */
+/* Bottom Inspector Footer */
 QFrame#FooterPanel {
     background-color: #141417;
     border-top: 1px solid #222228;
-    border-radius: 0px;
 }
 
 /* Artwork Thumbnail */
@@ -119,29 +137,31 @@ QFrame#CoverBox:hover {
     border-color: #FF5500;
 }
 
-/* Form Inputs */
+/* Input Fields */
 QLineEdit {
     background-color: #0E0E10;
     border: 1px solid #26262E;
     border-radius: 5px;
-    padding: 5px 8px;
+    padding: 6px 10px;
     color: #FFFFFF;
     font-size: 12px;
+    height: 18px;
 }
 
 QLineEdit:focus {
     border-color: #FF5500;
 }
 
-/* Tactile Buttons */
+/* Buttons */
 QPushButton.PrimaryBtn {
     background-color: #FF5500;
     color: #FFFFFF;
     font-weight: 600;
     font-size: 12px;
     border-radius: 5px;
-    padding: 6px 14px;
+    padding: 7px 16px;
     border: none;
+    min-height: 18px;
 }
 
 QPushButton.PrimaryBtn:hover {
@@ -159,7 +179,7 @@ QPushButton.GhostBtn {
     font-size: 11px;
     font-weight: 500;
     border-radius: 5px;
-    padding: 5px 10px;
+    padding: 6px 12px;
     border: 1px solid #282832;
 }
 
@@ -168,11 +188,12 @@ QPushButton.GhostBtn:hover {
     color: #FFFFFF;
 }
 
+/* Progress bar */
 QProgressBar {
     background-color: #121215;
     border: 1px solid #222228;
     border-radius: 3px;
-    height: 5px;
+    height: 6px;
 }
 
 QProgressBar::chunk {
@@ -180,6 +201,7 @@ QProgressBar::chunk {
     border-radius: 2px;
 }
 
+/* Monospace Console */
 QTextEdit#ConsoleView {
     background-color: #0A0A0C;
     border: 1px solid #1B1B20;
@@ -187,7 +209,7 @@ QTextEdit#ConsoleView {
     color: #8A8A96;
     font-family: Consolas, monospace;
     font-size: 11px;
-    padding: 8px;
+    padding: 8px 12px;
 }
 """
 
@@ -231,15 +253,14 @@ class AudioKitMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Audio Kit")
-        self.resize(1000, 680)
-        self.setMinimumSize(880, 560)
+        self.resize(1040, 700)
+        self.setMinimumSize(900, 580)
 
         self.file_list = []
         self.current_meta = None
         self.copied_art_bytes = None
         self.loudness_worker = None
 
-        # Main Root
         root = QWidget()
         root.setObjectName("MainRoot")
         self.setCentralWidget(root)
@@ -250,7 +271,7 @@ class AudioKitMainWindow(QMainWindow):
         # 1. Top Header Bar
         header = QFrame()
         header.setObjectName("TopHeader")
-        header.setFixedHeight(50)
+        header.setFixedHeight(52)
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(20, 0, 20, 0)
         h_layout.setSpacing(16)
@@ -259,14 +280,14 @@ class AudioKitMainWindow(QMainWindow):
         title.setObjectName("BrandTitle")
         h_layout.addWidget(title)
 
-        # Tab toggles
-        self.btn_tab_library = QPushButton("Library & Tags")
+        # Tabs with explicit labels
+        self.btn_tab_library = QPushButton("Library")
         self.btn_tab_library.setProperty("class", "TabBtn")
         self.btn_tab_library.setCheckable(True)
         self.btn_tab_library.setChecked(True)
         self.btn_tab_library.clicked.connect(lambda: self._set_active_view(0))
 
-        self.btn_tab_loudness = QPushButton("Loudness (EBU R128)")
+        self.btn_tab_loudness = QPushButton("Loudness")
         self.btn_tab_loudness.setProperty("class", "TabBtn")
         self.btn_tab_loudness.setCheckable(True)
         self.btn_tab_loudness.clicked.connect(lambda: self._set_active_view(1))
@@ -275,10 +296,10 @@ class AudioKitMainWindow(QMainWindow):
         h_layout.addWidget(self.btn_tab_loudness)
         h_layout.addStretch()
 
-        # Batch Fix Cover button in top bar
+        # Batch Fix Cover button
         self.btn_batch_baseline = QPushButton("Fix All Covers to Baseline")
-        self.btn_batch_baseline.setProperty("class", "GhostBtn")
-        self.btn_batch_baseline.setToolTip("Auto-converts all loaded tracks' artwork to standard Baseline JPEG for DAP compatibility")
+        self.btn_batch_baseline.setObjectName("BatchFixBtn")
+        self.btn_batch_baseline.setToolTip("Auto-converts all loaded tracks' artwork to standard Baseline JPEG for player compatibility")
         self.btn_batch_baseline.clicked.connect(self.batch_standardize_covers)
         h_layout.addWidget(self.btn_batch_baseline)
 
@@ -319,11 +340,13 @@ class AudioKitMainWindow(QMainWindow):
         self.library_table = QTableWidget()
         self.library_table.setColumnCount(5)
         self.library_table.setHorizontalHeaderLabels(["#", "Title", "Artist", "Album", "Cover"])
+        # Hide ugly default row number vertical header
+        self.library_table.verticalHeader().setVisible(False)
         self.library_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.library_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.library_table.setColumnWidth(0, 36)
-        self.library_table.setColumnWidth(2, 140)
-        self.library_table.setColumnWidth(4, 90)
+        self.library_table.setColumnWidth(0, 56) # Wide enough for '10/13'
+        self.library_table.setColumnWidth(2, 160)
+        self.library_table.setColumnWidth(4, 100)
         self.library_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.library_table.itemSelectionChanged.connect(self._on_track_selected)
         stack_layout.addWidget(self.library_table)
@@ -337,10 +360,12 @@ class AudioKitMainWindow(QMainWindow):
         self.loudness_table = QTableWidget()
         self.loudness_table.setColumnCount(4)
         self.loudness_table.setHorizontalHeaderLabels(["#", "File Name", "Gain (dB)", "True Peak"])
+        # Hide vertical header
+        self.loudness_table.verticalHeader().setVisible(False)
         self.loudness_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        self.loudness_table.setColumnWidth(0, 36)
-        self.loudness_table.setColumnWidth(2, 110)
-        self.loudness_table.setColumnWidth(3, 110)
+        self.loudness_table.setColumnWidth(0, 48)
+        self.loudness_table.setColumnWidth(2, 120)
+        self.loudness_table.setColumnWidth(3, 120)
         l_layout.addWidget(self.loudness_table)
 
         self.loudness_bar = QProgressBar()
@@ -348,14 +373,16 @@ class AudioKitMainWindow(QMainWindow):
         l_layout.addWidget(self.loudness_bar)
 
         act_row = QHBoxLayout()
+        act_row.setSpacing(12)
         self.loudness_console = QTextEdit()
         self.loudness_console.setObjectName("ConsoleView")
         self.loudness_console.setReadOnly(True)
         self.loudness_console.setFixedHeight(75)
         act_row.addWidget(self.loudness_console, stretch=3)
 
-        self.btn_calc_loudness = QPushButton("Scan & Write ReplayGain")
+        self.btn_calc_loudness = QPushButton("Scan & Tag ReplayGain")
         self.btn_calc_loudness.setProperty("class", "PrimaryBtn")
+        self.btn_calc_loudness.setFixedHeight(36)
         self.btn_calc_loudness.clicked.connect(self._start_loudness_scan)
         act_row.addWidget(self.btn_calc_loudness, stretch=1)
         l_layout.addLayout(act_row)
@@ -368,10 +395,10 @@ class AudioKitMainWindow(QMainWindow):
         # 4. Bottom Horizontal Metadata & Art Bar
         self.footer = QFrame()
         self.footer.setObjectName("FooterPanel")
-        self.footer.setFixedHeight(140)
+        self.footer.setFixedHeight(144)
         f_layout = QHBoxLayout(self.footer)
-        f_layout.setContentsMargins(16, 12, 16, 12)
-        f_layout.setSpacing(14)
+        f_layout.setContentsMargins(18, 14, 18, 14)
+        f_layout.setSpacing(16)
 
         # Cover Thumbnail Card
         self.cover_box = QFrame()
@@ -392,7 +419,7 @@ class AudioKitMainWindow(QMainWindow):
 
         # Cover Control Actions
         cover_actions = QVBoxLayout()
-        cover_actions.setSpacing(4)
+        cover_actions.setSpacing(6)
         cover_actions.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self.btn_choose_art = QPushButton("Replace...")
@@ -415,11 +442,11 @@ class AudioKitMainWindow(QMainWindow):
 
         # Metadata 2-row clean grid
         grid_col = QVBoxLayout()
-        grid_col.setSpacing(8)
+        grid_col.setSpacing(10)
 
         # Row 1: Title, Artist, Album
         r1 = QHBoxLayout()
-        r1.setSpacing(10)
+        r1.setSpacing(12)
         self.inp_title = QLineEdit()
         self.inp_title.setPlaceholderText("Title")
         self.inp_artist = QLineEdit()
@@ -431,20 +458,21 @@ class AudioKitMainWindow(QMainWindow):
         r1.addWidget(self.inp_album, stretch=3)
         grid_col.addLayout(r1)
 
-        # Row 2: Track, Year, Genre, Save
+        # Row 2: Track, Year, Genre, Save Tags
         r2 = QHBoxLayout()
-        r2.setSpacing(10)
+        r2.setSpacing(12)
         self.inp_track = QLineEdit()
         self.inp_track.setPlaceholderText("Track #")
-        self.inp_track.setFixedWidth(70)
+        self.inp_track.setFixedWidth(80) # Clean width for fractions e.g. 10/13
         self.inp_year = QLineEdit()
         self.inp_year.setPlaceholderText("Year")
-        self.inp_year.setFixedWidth(80)
+        self.inp_year.setFixedWidth(100) # Clean width for full dates e.g. 2019-05-31
         self.inp_genre = QLineEdit()
         self.inp_genre.setPlaceholderText("Genre")
 
         self.btn_save_tags = QPushButton("Save Tags")
         self.btn_save_tags.setProperty("class", "PrimaryBtn")
+        self.btn_save_tags.setFixedWidth(110)
         self.btn_save_tags.clicked.connect(self._save_tags)
 
         r2.addWidget(self.inp_track)
@@ -502,7 +530,9 @@ class AudioKitMainWindow(QMainWindow):
             fname = os.path.basename(path)
 
             # Library table
-            self.library_table.setItem(row, 0, QTableWidgetItem(meta.get('track') or str(row + 1)))
+            item_num = QTableWidgetItem(meta.get('track') or str(row + 1))
+            item_num.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.library_table.setItem(row, 0, item_num)
             self.library_table.setItem(row, 1, QTableWidgetItem(meta.get('title') or fname))
             self.library_table.setItem(row, 2, QTableWidgetItem(meta.get('artist') or "—"))
             self.library_table.setItem(row, 3, QTableWidgetItem(meta.get('album') or "—"))
@@ -517,10 +547,16 @@ class AudioKitMainWindow(QMainWindow):
             self.library_table.setItem(row, 4, art_item)
 
             # Loudness table
-            self.loudness_table.setItem(row, 0, QTableWidgetItem(f"{row + 1}"))
+            item_lnum = QTableWidgetItem(str(row + 1))
+            item_lnum.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.loudness_table.setItem(row, 0, item_lnum)
             self.loudness_table.setItem(row, 1, QTableWidgetItem(fname))
-            self.loudness_table.setItem(row, 2, QTableWidgetItem("Ready"))
-            self.loudness_table.setItem(row, 3, QTableWidgetItem("—"))
+            item_gain = QTableWidgetItem("Ready")
+            item_gain.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.loudness_table.setItem(row, 2, item_gain)
+            item_peak = QTableWidgetItem("—")
+            item_peak.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.loudness_table.setItem(row, 3, item_peak)
 
         if paths:
             self.library_table.selectRow(0)
@@ -591,7 +627,9 @@ class AudioKitMainWindow(QMainWindow):
         path = self.current_meta['filepath']
         if set_artwork(path, img_bytes, standardize_baseline=True):
             self._display_cover(img_bytes)
-            self.library_table.setItem(self.library_table.currentRow(), 4, QTableWidgetItem("Baseline"))
+            art_item = QTableWidgetItem("Baseline")
+            art_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.library_table.setItem(self.library_table.currentRow(), 4, art_item)
 
     def _copy_cover(self):
         if self.current_meta and self.current_meta['has_art']:
@@ -606,7 +644,9 @@ class AudioKitMainWindow(QMainWindow):
 
         for row, path in enumerate(self.file_list):
             if set_artwork(path, source_art, standardize_baseline=True):
-                self.library_table.setItem(row, 4, QTableWidgetItem("Baseline"))
+                art_item = QTableWidgetItem("Baseline")
+                art_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.library_table.setItem(row, 4, art_item)
 
         QMessageBox.information(self, "Applied", f"Baseline cover art applied across all {len(self.file_list)} tracks!")
 
@@ -618,7 +658,9 @@ class AudioKitMainWindow(QMainWindow):
             raw, _ = extract_artwork(path)
             if raw:
                 set_artwork(path, raw, standardize_baseline=True)
-                self.library_table.setItem(row, 4, QTableWidgetItem("Baseline"))
+                art_item = QTableWidgetItem("Baseline")
+                art_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.library_table.setItem(row, 4, art_item)
                 fixed += 1
         QMessageBox.information(self, "Standardization Complete", f"Standardized {fixed} tracks to Baseline JPEG.")
 
@@ -637,7 +679,9 @@ class AudioKitMainWindow(QMainWindow):
         if save_audio_metadata(path, updates):
             row = self.library_table.currentRow()
             if row >= 0:
-                self.library_table.setItem(row, 0, QTableWidgetItem(updates['track']))
+                item_t = QTableWidgetItem(updates['track'])
+                item_t.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.library_table.setItem(row, 0, item_t)
                 self.library_table.setItem(row, 1, QTableWidgetItem(updates['title']))
                 self.library_table.setItem(row, 2, QTableWidgetItem(updates['artist']))
                 self.library_table.setItem(row, 3, QTableWidgetItem(updates['album']))
@@ -661,8 +705,12 @@ class AudioKitMainWindow(QMainWindow):
         self.loudness_bar.setValue(current)
         row = current - 1
         if row < self.loudness_table.rowCount():
-            self.loudness_table.setItem(row, 2, QTableWidgetItem(gain_str))
-            self.loudness_table.setItem(row, 3, QTableWidgetItem(peak_str))
+            item_g = QTableWidgetItem(gain_str)
+            item_g.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            item_p = QTableWidgetItem(peak_str)
+            item_p.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.loudness_table.setItem(row, 2, item_g)
+            self.loudness_table.setItem(row, 3, item_p)
         self.loudness_console.append(log)
 
     def _on_loudness_finished(self, total):
