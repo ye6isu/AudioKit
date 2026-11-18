@@ -1,11 +1,10 @@
 """
-Unified 2-View Desktop Application for Audio Kit
-Refined based on real track visual review:
-- Hidden ugly vertical header column (no duplicate row numbers)
-- Generous track column width to avoid '10/...' truncation
-- Clean button typography ('Library & Tags', 'Scan & Tag ReplayGain')
-- Aligned table headers and input field heights
-- Balanced bottom metadata tray
+Audio Kit - Complete Desktop Audio Studio
+Tabs:
+1. Library & Tags (Metadata, Cover Manager, Baseline Fixer)
+2. Loudness (EBU R128, ReplayGain -18 LUFS)
+3. Trimmer (Sample-accurate waveform range cutter with live playback)
+4. Converter (Batch audio format transcoder: FLAC, MP3, WAV, OGG)
 """
 
 import sys
@@ -13,14 +12,16 @@ import os
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout,
     QFrame, QLabel, QPushButton, QTableWidget, QTableWidgetItem,
-    QHeaderView, QLineEdit, QFileDialog, QMessageBox, QProgressBar, QTextEdit
+    QHeaderView, QLineEdit, QFileDialog, QMessageBox, QProgressBar,
+    QTextEdit, QComboBox, QSlider, QDoubleSpinBox
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QPixmap, QIcon
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from core.engine import (
     scan_audio_files, read_audio_metadata, save_audio_metadata,
-    extract_artwork, set_artwork,
+    extract_artwork, set_artwork, trim_audio_file, convert_audio_format,
     calculate_loudness_and_peak, apply_replaygain_tags, DEFAULT_TARGET_LUFS,
     SUPPORTED_AUDIO_EXTENSIONS, SUPPORTED_IMAGE_EXTENSIONS
 )
@@ -137,8 +138,8 @@ QFrame#CoverBox:hover {
     border-color: #FF5500;
 }
 
-/* Input Fields */
-QLineEdit {
+/* Input Fields & Spinboxes */
+QLineEdit, QDoubleSpinBox, QComboBox {
     background-color: #0E0E10;
     border: 1px solid #26262E;
     border-radius: 5px;
@@ -148,8 +149,13 @@ QLineEdit {
     height: 18px;
 }
 
-QLineEdit:focus {
+QLineEdit:focus, QDoubleSpinBox:focus, QComboBox:focus {
     border-color: #FF5500;
+}
+
+QComboBox::drop-down {
+    border: none;
+    padding-right: 8px;
 }
 
 /* Buttons */
@@ -211,6 +217,27 @@ QTextEdit#ConsoleView {
     font-size: 11px;
     padding: 8px 12px;
 }
+
+/* Slider */
+QSlider::groove:horizontal {
+    height: 4px;
+    background: #202026;
+    border-radius: 2px;
+}
+
+QSlider::sub-page:horizontal {
+    background: #FF5500;
+    border-radius: 2px;
+}
+
+QSlider::handle:horizontal {
+    background: #FFFFFF;
+    border: 1px solid #FF5500;
+    width: 12px;
+    margin-top: -4px;
+    margin-bottom: -4px;
+    border-radius: 6px;
+}
 """
 
 class LoudnessThread(QThread):
@@ -249,6 +276,29 @@ class LoudnessThread(QThread):
         self.finished.emit(total)
 
 
+class BatchConvertThread(QThread):
+    progress = pyqtSignal(int, int, str)
+    finished = pyqtSignal(int)
+
+    def __init__(self, file_paths, target_ext, output_dir=None):
+        super().__init__()
+        self.file_paths = file_paths
+        self.target_ext = target_ext
+        self.output_dir = output_dir
+
+    def run(self):
+        total = len(self.file_paths)
+        for idx, p in enumerate(self.file_paths):
+            fname = os.path.basename(p)
+            try:
+                out = convert_audio_format(p, self.target_ext, self.output_dir)
+                msg = f"Converted: {fname} -> {os.path.basename(out)}"
+            except Exception as e:
+                msg = f"Failed {fname}: {e}"
+            self.progress.emit(idx + 1, total, msg)
+        self.finished.emit(total)
+
+
 class AudioKitMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -265,6 +315,14 @@ class AudioKitMainWindow(QMainWindow):
         self.current_meta = None
         self.copied_art_bytes = None
         self.loudness_worker = None
+        self.convert_worker = None
+
+        # Audio Player for Trimmer
+        self.player = QMediaPlayer()
+        self.audio_output = QAudioOutput()
+        self.player.setAudioOutput(self.audio_output)
+        self.player.positionChanged.connect(self._on_player_pos_changed)
+        self.player.durationChanged.connect(self._on_player_duration_changed)
 
         root = QWidget()
         root.setObjectName("MainRoot")
@@ -279,26 +337,23 @@ class AudioKitMainWindow(QMainWindow):
         header.setFixedHeight(52)
         h_layout = QHBoxLayout(header)
         h_layout.setContentsMargins(20, 0, 20, 0)
-        h_layout.setSpacing(16)
+        h_layout.setSpacing(12)
 
         title = QLabel("Audio Kit")
         title.setObjectName("BrandTitle")
         h_layout.addWidget(title)
 
-        # Tabs with explicit labels
-        self.btn_tab_library = QPushButton("Library")
-        self.btn_tab_library.setProperty("class", "TabBtn")
-        self.btn_tab_library.setCheckable(True)
-        self.btn_tab_library.setChecked(True)
-        self.btn_tab_library.clicked.connect(lambda: self._set_active_view(0))
+        # Tabs: Library, Loudness, Trimmer, Converter
+        self.nav_tabs = []
+        tab_names = ["Library", "Loudness", "Trimmer", "Converter"]
+        for idx, name in enumerate(tab_names):
+            btn = QPushButton(name)
+            btn.setProperty("class", "TabBtn")
+            btn.setCheckable(True)
+            btn.clicked.connect(lambda checked, i=idx: self._set_active_view(i))
+            self.nav_tabs.append(btn)
+            h_layout.addWidget(btn)
 
-        self.btn_tab_loudness = QPushButton("Loudness")
-        self.btn_tab_loudness.setProperty("class", "TabBtn")
-        self.btn_tab_loudness.setCheckable(True)
-        self.btn_tab_loudness.clicked.connect(lambda: self._set_active_view(1))
-
-        h_layout.addWidget(self.btn_tab_library)
-        h_layout.addWidget(self.btn_tab_loudness)
         h_layout.addStretch()
 
         # Batch Fix Cover button
@@ -310,7 +365,7 @@ class AudioKitMainWindow(QMainWindow):
 
         main_layout.addWidget(header)
 
-        # 2. Drop Bar
+        # 2. Universal Drop Bar
         self.drop_bar = QFrame()
         self.drop_bar.setObjectName("DropBar")
         self.drop_bar.setFixedHeight(46)
@@ -335,7 +390,7 @@ class AudioKitMainWindow(QMainWindow):
         dc_layout.addWidget(self.drop_bar)
         main_layout.addWidget(drop_container)
 
-        # 3. Middle Content (Stack: Library View vs Loudness View)
+        # 3. Middle Content Views
         self.content_stack = QFrame()
         stack_layout = QVBoxLayout(self.content_stack)
         stack_layout.setContentsMargins(16, 0, 16, 0)
@@ -345,18 +400,17 @@ class AudioKitMainWindow(QMainWindow):
         self.library_table = QTableWidget()
         self.library_table.setColumnCount(5)
         self.library_table.setHorizontalHeaderLabels(["#", "Title", "Artist", "Album", "Cover"])
-        # Hide ugly default row number vertical header
         self.library_table.verticalHeader().setVisible(False)
         self.library_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.library_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        self.library_table.setColumnWidth(0, 56) # Wide enough for '10/13'
+        self.library_table.setColumnWidth(0, 56)
         self.library_table.setColumnWidth(2, 160)
         self.library_table.setColumnWidth(4, 100)
         self.library_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.library_table.itemSelectionChanged.connect(self._on_track_selected)
         stack_layout.addWidget(self.library_table)
 
-        # --- View 1: Loudness Table & Console ---
+        # --- View 1: Loudness View ---
         self.loudness_container = QWidget()
         l_layout = QVBoxLayout(self.loudness_container)
         l_layout.setContentsMargins(0, 0, 0, 0)
@@ -365,7 +419,6 @@ class AudioKitMainWindow(QMainWindow):
         self.loudness_table = QTableWidget()
         self.loudness_table.setColumnCount(4)
         self.loudness_table.setHorizontalHeaderLabels(["#", "File Name", "Gain (dB)", "True Peak"])
-        # Hide vertical header
         self.loudness_table.verticalHeader().setVisible(False)
         self.loudness_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.loudness_table.setColumnWidth(0, 48)
@@ -391,9 +444,111 @@ class AudioKitMainWindow(QMainWindow):
         self.btn_calc_loudness.clicked.connect(self._start_loudness_scan)
         act_row.addWidget(self.btn_calc_loudness, stretch=1)
         l_layout.addLayout(act_row)
-
         stack_layout.addWidget(self.loudness_container)
-        self.loudness_container.setVisible(False)
+
+        # --- View 2: Trimmer View ---
+        self.trimmer_container = QWidget()
+        t_layout = QVBoxLayout(self.trimmer_container)
+        t_layout.setContentsMargins(0, 0, 0, 0)
+        t_layout.setSpacing(12)
+
+        self.trim_file_label = QLabel("Select a track in the library to trim")
+        self.trim_file_label.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
+        t_layout.addWidget(self.trim_file_label)
+
+        # Scrubber slider
+        self.trim_slider = QSlider(Qt.Orientation.Horizontal)
+        self.trim_slider.sliderMoved.connect(self._seek_player)
+        t_layout.addWidget(self.trim_slider)
+
+        # Controls & Spinboxes
+        ctrl_row = QHBoxLayout()
+        ctrl_row.setSpacing(14)
+
+        self.btn_play_pause = QPushButton("Play")
+        self.btn_play_pause.setProperty("class", "GhostBtn")
+        self.btn_play_pause.setFixedWidth(80)
+        self.btn_play_pause.clicked.connect(self._toggle_playback)
+
+        self.time_label = QLabel("0:00 / 0:00")
+        self.time_label.setStyleSheet("color: #8C8C96; font-size: 11px;")
+
+        ctrl_row.addWidget(self.btn_play_pause)
+        ctrl_row.addWidget(self.time_label)
+        ctrl_row.addStretch()
+
+        # Start & End Spinboxes
+        ctrl_row.addWidget(QLabel("Start:"))
+        self.spin_start = QDoubleSpinBox()
+        self.spin_start.setRange(0.0, 9999.0)
+        self.spin_start.setSingleStep(0.5)
+        self.spin_start.setSuffix("s")
+        self.spin_start.setFixedWidth(80)
+        ctrl_row.addWidget(self.spin_start)
+
+        ctrl_row.addWidget(QLabel("End:"))
+        self.spin_end = QDoubleSpinBox()
+        self.spin_end.setRange(0.0, 9999.0)
+        self.spin_end.setSingleStep(0.5)
+        self.spin_end.setSuffix("s")
+        self.spin_end.setFixedWidth(80)
+        ctrl_row.addWidget(self.spin_end)
+
+        self.btn_trim_save = QPushButton("Save Trimmed Audio")
+        self.btn_trim_save.setProperty("class", "PrimaryBtn")
+        self.btn_trim_save.clicked.connect(self._execute_trim)
+        ctrl_row.addWidget(self.btn_trim_save)
+
+        t_layout.addLayout(ctrl_row)
+
+        self.trim_log = QTextEdit()
+        self.trim_log.setObjectName("ConsoleView")
+        self.trim_log.setReadOnly(True)
+        self.trim_log.setFixedHeight(120)
+        t_layout.addWidget(self.trim_log)
+        stack_layout.addWidget(self.trimmer_container)
+
+        # --- View 3: Converter View ---
+        self.converter_container = QWidget()
+        c_layout = QVBoxLayout(self.converter_container)
+        c_layout.setContentsMargins(0, 0, 0, 0)
+        c_layout.setSpacing(10)
+
+        self.convert_table = QTableWidget()
+        self.convert_table.setColumnCount(3)
+        self.convert_table.setHorizontalHeaderLabels(["#", "File Name", "Status"])
+        self.convert_table.verticalHeader().setVisible(False)
+        self.convert_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.convert_table.setColumnWidth(0, 48)
+        self.convert_table.setColumnWidth(2, 140)
+        c_layout.addWidget(self.convert_table)
+
+        self.convert_bar = QProgressBar()
+        self.convert_bar.setVisible(False)
+        c_layout.addWidget(self.convert_bar)
+
+        c_act_row = QHBoxLayout()
+        c_act_row.setSpacing(12)
+
+        c_act_row.addWidget(QLabel("Target Format:"))
+        self.combo_format = QComboBox()
+        self.combo_format.addItems(["FLAC (.flac)", "MP3 (.mp3)", "WAV (.wav)", "OGG (.ogg)"])
+        self.combo_format.setFixedWidth(140)
+        c_act_row.addWidget(self.combo_format)
+        c_act_row.addStretch()
+
+        self.btn_start_convert = QPushButton("Convert All Files")
+        self.btn_start_convert.setProperty("class", "PrimaryBtn")
+        self.btn_start_convert.clicked.connect(self._start_batch_convert)
+        c_act_row.addWidget(self.btn_start_convert)
+        c_layout.addLayout(c_act_row)
+
+        self.convert_log = QTextEdit()
+        self.convert_log.setObjectName("ConsoleView")
+        self.convert_log.setReadOnly(True)
+        self.convert_log.setFixedHeight(85)
+        c_layout.addWidget(self.convert_log)
+        stack_layout.addWidget(self.converter_container)
 
         main_layout.addWidget(self.content_stack, stretch=1)
 
@@ -468,10 +623,10 @@ class AudioKitMainWindow(QMainWindow):
         r2.setSpacing(12)
         self.inp_track = QLineEdit()
         self.inp_track.setPlaceholderText("Track #")
-        self.inp_track.setFixedWidth(80) # Clean width for fractions e.g. 10/13
+        self.inp_track.setFixedWidth(80)
         self.inp_year = QLineEdit()
         self.inp_year.setPlaceholderText("Year")
-        self.inp_year.setFixedWidth(100) # Clean width for full dates e.g. 2019-05-31
+        self.inp_year.setFixedWidth(100)
         self.inp_genre = QLineEdit()
         self.inp_genre.setPlaceholderText("Genre")
 
@@ -492,24 +647,25 @@ class AudioKitMainWindow(QMainWindow):
         self._set_active_view(0)
 
     def _set_active_view(self, index):
-        if index == 0:
-            self.btn_tab_library.setChecked(True)
-            self.btn_tab_loudness.setChecked(False)
-            self.library_table.setVisible(True)
-            self.loudness_container.setVisible(False)
-            self.footer.setVisible(True)
-        else:
-            self.btn_tab_library.setChecked(False)
-            self.btn_tab_loudness.setChecked(True)
-            self.library_table.setVisible(False)
-            self.loudness_container.setVisible(True)
-            self.footer.setVisible(False)
+        for i, tab_btn in enumerate(self.nav_tabs):
+            tab_btn.setChecked(i == index)
+
+        self.library_table.setVisible(index == 0)
+        self.loudness_container.setVisible(index == 1)
+        self.trimmer_container.setVisible(index == 2)
+        self.converter_container.setVisible(index == 3)
+        self.footer.setVisible(index == 0)
+
+        # Stop audio playback if navigating away from trimmer
+        if index != 2 and self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+            self.btn_play_pause.setText("Play")
 
     # --- Loading & Drop Handlers ---
     def _browse_audio(self):
         files, _ = QFileDialog.getOpenFileNames(
             self, "Select Audio Files", "",
-            "Audio Files (*.flac *.mp3 *.m4a *.mp4 *.ogg *.opus *.wav)"
+            "Audio Files (*.flac *.mp3 *.m4a *.mp4 *.ogg *.opus *.wav *.aiff)"
         )
         if files:
             self.load_audio_files(files)
@@ -529,6 +685,7 @@ class AudioKitMainWindow(QMainWindow):
         self.drop_label.setText(f"{len(paths)} track(s) loaded")
         self.library_table.setRowCount(len(paths))
         self.loudness_table.setRowCount(len(paths))
+        self.convert_table.setRowCount(len(paths))
 
         for row, path in enumerate(paths):
             meta = read_audio_metadata(path)
@@ -563,6 +720,15 @@ class AudioKitMainWindow(QMainWindow):
             item_peak.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.loudness_table.setItem(row, 3, item_peak)
 
+            # Converter table
+            item_cnum = QTableWidgetItem(str(row + 1))
+            item_cnum.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.convert_table.setItem(row, 0, item_cnum)
+            self.convert_table.setItem(row, 1, QTableWidgetItem(fname))
+            item_cstat = QTableWidgetItem("Ready")
+            item_cstat.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.convert_table.setItem(row, 2, item_cstat)
+
         if paths:
             self.library_table.selectRow(0)
 
@@ -586,6 +752,14 @@ class AudioKitMainWindow(QMainWindow):
             else:
                 self.cover_preview.setPixmap(QPixmap())
                 self.cover_preview.setText("No Cover\n(Drop File)")
+
+            # Update trimmer target
+            dur = self.current_meta.get('duration_sec', 0.0)
+            self.trim_file_label.setText(f"Trimming: {os.path.basename(path)} ({dur:.1f}s)")
+            self.spin_start.setValue(0.0)
+            self.spin_end.setMaximum(dur)
+            self.spin_end.setValue(dur)
+            self.player.setSource(QUrl.fromLocalFile(path))
 
     def _display_cover(self, img_bytes):
         pix = QPixmap()
@@ -723,9 +897,98 @@ class AudioKitMainWindow(QMainWindow):
         self.btn_calc_loudness.setEnabled(True)
         self.loudness_console.append(f">> Finished scanning and tagging {total} tracks.")
 
+    # --- Trimmer Methods ---
+    def _toggle_playback(self):
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+            self.btn_play_pause.setText("Play")
+        else:
+            self.player.play()
+            self.btn_play_pause.setText("Pause")
+
+    def _on_player_pos_changed(self, pos_ms):
+        dur_ms = self.player.duration()
+        if dur_ms > 0:
+            self.trim_slider.setValue(int(pos_ms * 1000 / dur_ms))
+            cur_s = pos_ms / 1000
+            tot_s = dur_ms / 1000
+            self.time_label.setText(f"{int(cur_s//60)}:{int(cur_s%60):02d} / {int(tot_s//60)}:{int(tot_s%60):02d}")
+
+    def _on_player_duration_changed(self, dur_ms):
+        tot_s = dur_ms / 1000
+        self.spin_end.setMaximum(tot_s)
+        if self.spin_end.value() == 0.0 or self.spin_end.value() > tot_s:
+            self.spin_end.setValue(tot_s)
+
+    def _seek_player(self, val):
+        dur_ms = self.player.duration()
+        if dur_ms > 0:
+            self.player.setPosition(int(val * dur_ms / 1000))
+
+    def _execute_trim(self):
+        if not self.current_meta:
+            QMessageBox.warning(self, "No Track", "Select a track to trim.")
+            return
+
+        source = self.current_meta['filepath']
+        s_sec = self.spin_start.value()
+        e_sec = self.spin_end.value()
+
+        if e_sec <= s_sec:
+            QMessageBox.warning(self, "Invalid Range", "End time must be greater than start time.")
+            return
+
+        base, ext = os.path.splitext(source)
+        dest_default = f"{base}_trimmed{ext}"
+        dest, _ = QFileDialog.getSaveFileName(self, "Save Trimmed File", dest_default, f"Audio File (*{ext})")
+        if dest:
+            try:
+                trim_audio_file(source, dest, s_sec, e_sec)
+                self.trim_log.append(f"Trimmed successfully: {os.path.basename(dest)} ({s_sec:.1f}s -> {e_sec:.1f}s)")
+                QMessageBox.information(self, "Trim Complete", f"Trimmed audio saved to {os.path.basename(dest)}")
+            except Exception as ex:
+                self.trim_log.append(f"Error trimming {os.path.basename(source)}: {ex}")
+                QMessageBox.critical(self, "Error", str(ex))
+
+    # --- Batch Converter Methods ---
+    def _start_batch_convert(self):
+        if not self.file_list:
+            QMessageBox.warning(self, "No Files", "No audio files loaded.")
+            return
+
+        target_ext_str = self.combo_format.currentText()
+        ext_map = {"FLAC (.flac)": ".flac", "MP3 (.mp3)": ".mp3", "WAV (.wav)": ".wav", "OGG (.ogg)": ".ogg"}
+        target_ext = ext_map.get(target_ext_str, ".flac")
+
+        out_dir = QFileDialog.getExistingDirectory(self, "Select Output Directory (or Cancel to save alongside source)")
+        out_dir = out_dir if out_dir else None
+
+        self.btn_start_convert.setEnabled(False)
+        self.convert_bar.setVisible(True)
+        self.convert_bar.setMaximum(len(self.file_list))
+        self.convert_bar.setValue(0)
+
+        self.convert_worker = BatchConvertThread(self.file_list, target_ext, out_dir)
+        self.convert_worker.progress.connect(self._on_convert_progress)
+        self.convert_worker.finished.connect(self._on_convert_finished)
+        self.convert_worker.start()
+
+    def _on_convert_progress(self, current, total, msg):
+        self.convert_bar.setValue(current)
+        row = current - 1
+        if row < self.convert_table.rowCount():
+            item_done = QTableWidgetItem("Converted ✓")
+            item_done.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.convert_table.setItem(row, 2, item_done)
+        self.convert_log.append(msg)
+
+    def _on_convert_finished(self, total):
+        self.convert_bar.setVisible(False)
+        self.btn_start_convert.setEnabled(True)
+        self.convert_log.append(f">> Finished batch conversion for {total} files.")
+
 
 def main():
-    # Set Windows App User Model ID so taskbar shows proper icon instead of default python icon
     try:
         import ctypes
         myappid = 'yebisu.audiokit.desktop.1.0'

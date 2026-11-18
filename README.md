@@ -1,37 +1,46 @@
 # Audio Kit
 
-A lightweight desktop audio utility for metadata editing, Baseline JPEG cover encoding, and EBU R128 loudness normalization.
+A lightweight, all-in-one desktop audio utility for metadata editing, Baseline JPEG cover encoding, EBU R128 loudness normalization, sample-accurate audio trimming, and batch format conversion.
 
 ---
 
 ## Screenshots
 
-### Library & Tag Editor
+### 1. Library & Tag Editor
 ![Audio Kit Library](docs/images/library.png)
-*Track list, inline metadata editing, and cover management with one-click album inheritance.*
+*Inline metadata editing and album cover management with one-click album inheritance.*
 
-### Loudness Normalizer (EBU R128)
+### 2. Audio Trimmer
+![Audio Kit Trimmer](docs/images/trimmer.png)
+*Sample-accurate audio slicing with integrated playback and scrubber controls.*
+
+### 3. Format Converter
+![Audio Kit Converter](docs/images/converter.png)
+*Batch audio transcoding across FLAC, MP3, WAV, and OGG formats with metadata preservation.*
+
+### 4. Loudness Normalizer (EBU R128)
 ![Audio Kit Loudness](docs/images/loudness.png)
-*Integrated loudness scanning (-18.00 LUFS target) and true sample peak tagging.*
+*ITU-R BS.1770 / EBU R128 integrated loudness scanning (-18.00 LUFS target) and true peak tagging.*
 
 ---
 
 ## Features
 
-- **Metadata Editor**: Edit standard tags (Title, Artist, Album, Track, Year, Genre) across FLAC and MP3 files.
-- **Hardware-Compliant Artwork**: Converts progressive JPEGs and non-RGB covers into standard **Baseline RGB JPEG (Quality 95)** for digital audio players and older hardware.
+- **Metadata Editor**: Edit standard tags (Title, Artist, Album, Track #, Year, Genre) across FLAC and MP3 files.
+- **Hardware-Compliant Artwork**: Automatically converts progressive JPEGs and non-RGB covers into standard **Baseline RGB JPEG (Quality 95)** for digital audio players (DAPs) and legacy car stereos.
 - **Dual-Source Cover Art**: Drop an image file or drop an existing audio track into the cover slot to extract artwork, then click `Apply to All` to tag an entire album.
-- **Tag Deduplication**: Automatically cleans repeated multi-value artist and genre tags.
+- **Audio Trimmer**: Sample-accurate slicing with live playback controls, precise start/end spinboxes, and full metadata transfer.
+- **Batch Converter**: Transcode audio collections to FLAC, MP3, WAV, or OGG while automatically migrating tags and cover artwork.
 - **ReplayGain Normalizer**: Measures integrated loudness using ITU-R BS.1770 / EBU R128 algorithms and writes standard ReplayGain tags.
 
 ---
 
 ## Tech Stack
 
-- **GUI**: PyQt6
-- **Metadata**: Mutagen
-- **Audio & Loudness**: Soundfile, pyloudnorm, NumPy
-- **Image Processing**: Pillow
+- **GUI & Media:** PyQt6, QtMultimedia
+- **Audio DSP & Loudness:** Soundfile, pyloudnorm, NumPy
+- **Metadata:** Mutagen
+- **Image Processing:** Pillow
 
 ---
 

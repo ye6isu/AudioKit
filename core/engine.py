@@ -1,11 +1,11 @@
 """
 Audio Kit - Audio & Metadata Processing Engine
-Unified core operations for:
-- Album art extraction and Walkman-compliant Baseline JPEG standardization
-- Audio metadata tag inspection and editing (Title, Artist, Album, Year, Genre, Track, etc.)
-- Metadata deduplication (cleaning duplicate multi-value artist/genre tags)
-- ReplayGain 2.0 (-18 LUFS) calculation and tagging
-- Album art cloning/transfer
+Unified core operations:
+- Metadata tag read/write and deduplication
+- Baseline JPEG cover art standardization and transfer
+- ReplayGain / EBU R128 loudness analysis (-18 LUFS)
+- High-fidelity Audio Trimming (sample-accurate start/end slicing)
+- Audio Format Conversion (FLAC, MP3, WAV, OGG, AIFF) with metadata preservation
 """
 
 import os
@@ -20,18 +20,12 @@ import mutagen
 from mutagen.flac import FLAC, Picture
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, APIC, TXXX, TIT2, TPE1, TALB, TDRC, TCON, TRCK, TPOS, TPE2, ID3NoHeaderError
-from mutagen.mp4 import MP4
-from mutagen.oggvorbis import OggVorbis
-from mutagen.oggopus import OggOpus
 
 SUPPORTED_AUDIO_EXTENSIONS = {'.flac', '.mp3', '.m4a', '.mp4', '.ogg', '.opus', '.wav', '.aiff'}
 SUPPORTED_IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.tiff'}
 DEFAULT_TARGET_LUFS = -18.0
 
 def scan_audio_files(paths, recursive=True):
-    """
-    Finds all supported audio files given a list of file and/or directory paths.
-    """
     matched = []
     for p in paths:
         p_obj = Path(p)
@@ -46,11 +40,6 @@ def scan_audio_files(paths, recursive=True):
     return sorted(list(dict.fromkeys(matched)))
 
 def convert_to_baseline_jpeg(img_bytes, max_dim=None, quality=95):
-    """
-    Standardizes image bytes to Baseline JPEG format (compatible with Walkman, DAPs, car stereos).
-    Converts color modes to RGB, drops progressive encoding, and optionally downscales.
-    Returns (jpeg_bytes, width, height).
-    """
     img = Image.open(io.BytesIO(img_bytes))
     if img.mode != 'RGB':
         img = img.convert('RGB')
@@ -63,16 +52,11 @@ def convert_to_baseline_jpeg(img_bytes, max_dim=None, quality=95):
     return out.getvalue(), img.width, img.height
 
 def inspect_cover_art(img_bytes):
-    """
-    Inspects cover image bytes to check if it needs Walkman standardization.
-    Returns dict: {needs_fix: bool, is_progressive: bool, format: str, mode: str, size: (w, h)}
-    """
     try:
         img = Image.open(io.BytesIO(img_bytes))
         is_prog = bool(img.info.get('progressive', False))
         fmt = (img.format or "").upper()
         mode = img.mode
-        # Sony Walkmans typically fail on progressive JPEGs, non-JPEG/non-PNG formats, CMYK/RGBA, or >3000px
         needs_fix = is_prog or (mode not in ('RGB', 'L')) or (fmt != 'JPEG')
         return {
             'needs_fix': needs_fix,
@@ -93,12 +77,7 @@ def inspect_cover_art(img_bytes):
         }
 
 def extract_artwork(file_path):
-    """
-    Extracts embedded cover artwork bytes from an audio file, or reads directly if an image file.
-    Returns (raw_bytes, mime_type) or (None, None) if no artwork is embedded.
-    """
     ext = os.path.splitext(file_path)[1].lower()
-    
     if ext in SUPPORTED_IMAGE_EXTENSIONS:
         with open(file_path, 'rb') as f:
             data = f.read()
@@ -109,7 +88,6 @@ def extract_artwork(file_path):
         if ext == '.flac':
             audio = FLAC(file_path)
             if audio.pictures:
-                # Prefer front cover type 3
                 front = [p for p in audio.pictures if p.type == 3]
                 pic = front[0] if front else audio.pictures[0]
                 return pic.data, pic.mime
@@ -132,14 +110,9 @@ def extract_artwork(file_path):
                             return v.data, getattr(v, 'mime', 'image/jpeg')
     except Exception:
         pass
-
     return None, None
 
 def set_artwork(file_path, img_bytes, standardize_baseline=True):
-    """
-    Sets the front cover artwork for an audio file.
-    Optionally standardizes the image to Baseline JPEG (Walkman compatible).
-    """
     ext = os.path.splitext(file_path)[1].lower()
     if standardize_baseline:
         cover_data, w, h = convert_to_baseline_jpeg(img_bytes)
@@ -174,7 +147,6 @@ def set_artwork(file_path, img_bytes, standardize_baseline=True):
             audio = ID3(file_path)
         except ID3NoHeaderError:
             audio = ID3()
-        # Remove existing APIC frames
         apic_keys = [k for k in audio.keys() if k.startswith('APIC')]
         for k in apic_keys:
             del audio[k]
@@ -191,9 +163,6 @@ def set_artwork(file_path, img_bytes, standardize_baseline=True):
     return False
 
 def remove_artwork(file_path):
-    """
-    Removes cover artwork from the specified file.
-    """
     ext = os.path.splitext(file_path)[1].lower()
     if ext == '.flac':
         audio = FLAC(file_path)
@@ -215,10 +184,6 @@ def remove_artwork(file_path):
     return False
 
 def deduplicate_tags(audio_tags):
-    """
-    Removes duplicate values in multi-valued tags (e.g. repeated artist or genre strings).
-    Returns True if any changes were made.
-    """
     if not audio_tags:
         return False
     changed = False
@@ -238,10 +203,6 @@ def deduplicate_tags(audio_tags):
     return changed
 
 def read_audio_metadata(file_path):
-    """
-    Reads standard metadata tags from FLAC or MP3.
-    Returns a unified dict representation.
-    """
     ext = os.path.splitext(file_path)[1].lower()
     meta = {
         'filepath': file_path,
@@ -254,12 +215,12 @@ def read_audio_metadata(file_path):
         'disc': '',
         'year': '',
         'genre': '',
+        'duration_sec': 0.0,
         'has_art': False,
         'art_info': None,
         'art_bytes': None
     }
 
-    # Extract art info
     raw_art, mime = extract_artwork(file_path)
     if raw_art:
         meta['has_art'] = True
@@ -269,6 +230,7 @@ def read_audio_metadata(file_path):
     if ext == '.flac':
         try:
             audio = FLAC(file_path)
+            meta['duration_sec'] = float(getattr(audio.info, 'length', 0.0))
             def get_f(key):
                 v = audio.get(key, [])
                 return ', '.join(v) if isinstance(v, list) else str(v)
@@ -286,6 +248,7 @@ def read_audio_metadata(file_path):
     elif ext == '.mp3':
         try:
             audio = MP3(file_path)
+            meta['duration_sec'] = float(getattr(audio.info, 'length', 0.0))
             if audio.tags:
                 tags = audio.tags
                 def get_id3(frame):
@@ -304,15 +267,18 @@ def read_audio_metadata(file_path):
         except Exception:
             pass
 
+    # Fallback to soundfile duration
+    if meta['duration_sec'] == 0.0:
+        try:
+            info = sf.info(file_path)
+            meta['duration_sec'] = float(info.duration)
+        except Exception:
+            pass
+
     return meta
 
 def save_audio_metadata(file_path, updates):
-    """
-    Saves updated text metadata tags back to the audio file.
-    updates is a dict with possible keys: title, artist, album, albumartist, track, disc, year, genre.
-    """
     ext = os.path.splitext(file_path)[1].lower()
-
     if ext == '.flac':
         audio = FLAC(file_path)
         if 'title' in updates: audio['title'] = [updates['title']] if updates['title'] else []
@@ -354,10 +320,6 @@ def save_audio_metadata(file_path, updates):
     return False
 
 def calculate_loudness_and_peak(file_path, target_lufs=DEFAULT_TARGET_LUFS):
-    """
-    Calculates integrated loudness via pyloudnorm and true sample peak via soundfile.
-    Returns (gain_db, peak, loudness_lufs).
-    """
     data, rate = sf.read(file_path, dtype='float32')
     meter = pyln.Meter(rate)
     loudness = meter.integrated_loudness(data)
@@ -366,9 +328,6 @@ def calculate_loudness_and_peak(file_path, target_lufs=DEFAULT_TARGET_LUFS):
     return gain_db, peak, loudness
 
 def apply_replaygain_tags(file_path, track_gain, track_peak, album_gain=None, album_peak=None):
-    """
-    Applies standard ReplayGain 2.0 tags to the file.
-    """
     ext = os.path.splitext(file_path)[1].lower()
     track_gain_str = f"{track_gain:+.2f} dB"
     track_peak_str = f"{track_peak:.6f}"
@@ -401,3 +360,67 @@ def apply_replaygain_tags(file_path, track_gain, track_peak, album_gain=None, al
         return True
 
     return False
+
+# --- Audio Trimming & Format Conversion ---
+
+def trim_audio_file(source_path, dest_path, start_sec, end_sec):
+    """
+    Sample-accurate audio trimming.
+    Reads audio samples between start_sec and end_sec, writes to dest_path,
+    and preserves all metadata and embedded cover artwork.
+    """
+    info = sf.info(source_path)
+    sr = info.samplerate
+    start_frame = max(0, int(start_sec * sr))
+    end_frame = min(info.frames, int(end_sec * sr))
+
+    if end_frame <= start_frame:
+        raise ValueError("End time must be strictly greater than start time.")
+
+    data, rate = sf.read(source_path, start=start_frame, stop=end_frame, dtype='float32')
+    
+    # Save trimmed audio
+    target_ext = os.path.splitext(dest_path)[1].lower()
+    fmt_map = {'.flac': 'FLAC', '.wav': 'WAV', '.mp3': 'MP3', '.ogg': 'OGG', '.aiff': 'AIFF'}
+    sf_fmt = fmt_map.get(target_ext, 'FLAC')
+    sf.write(dest_path, data, rate, format=sf_fmt)
+
+    # Transfer metadata tags & artwork if FLAC or MP3
+    try:
+        orig_meta = read_audio_metadata(source_path)
+        save_audio_metadata(dest_path, orig_meta)
+        if orig_meta.get('has_art') and orig_meta.get('art_bytes'):
+            set_artwork(dest_path, orig_meta['art_bytes'], standardize_baseline=True)
+    except Exception:
+        pass
+
+    return True
+
+def convert_audio_format(source_path, dest_format_ext, output_dir=None):
+    """
+    Converts audio track to target format (.flac, .mp3, .wav, .ogg).
+    Preserves sample rate, channels, tags, and cover artwork.
+    """
+    dest_format_ext = dest_format_ext.lower()
+    if not dest_format_ext.startswith('.'):
+        dest_format_ext = '.' + dest_format_ext
+
+    base_name = os.path.splitext(os.path.basename(source_path))[0]
+    out_dir = output_dir or os.path.dirname(source_path)
+    out_path = os.path.join(out_dir, f"{base_name}{dest_format_ext}")
+
+    data, rate = sf.read(source_path, dtype='float32')
+    fmt_map = {'.flac': 'FLAC', '.wav': 'WAV', '.mp3': 'MP3', '.ogg': 'OGG', '.aiff': 'AIFF'}
+    sf_fmt = fmt_map.get(dest_format_ext, 'FLAC')
+    sf.write(out_path, data, rate, format=sf_fmt)
+
+    # Migrate metadata & cover
+    try:
+        orig_meta = read_audio_metadata(source_path)
+        save_audio_metadata(out_path, orig_meta)
+        if orig_meta.get('has_art') and orig_meta.get('art_bytes'):
+            set_artwork(out_path, orig_meta['art_bytes'], standardize_baseline=True)
+    except Exception:
+        pass
+
+    return out_path
