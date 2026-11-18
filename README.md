@@ -62,4 +62,4 @@ python main.py
 
 ## License
 
-[MIT License](LICENSE) — Liam Andreu Gamboa ([ye6isu](https://github.com/ye6isu))
+[MIT License](LICENSE) — Andreu Liam Gamboa ([ye6isu](https://github.com/ye6isu))
