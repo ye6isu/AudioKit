@@ -19,6 +19,8 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal, QUrl
 from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QPixmap, QIcon
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
+from gui.waveform import WaveformTimeline
+
 from core.engine import (
     scan_audio_files, read_audio_metadata, save_audio_metadata,
     extract_artwork, set_artwork, trim_audio_file, convert_audio_format,
@@ -456,10 +458,11 @@ class AudioKitMainWindow(QMainWindow):
         self.trim_file_label.setStyleSheet("font-size: 13px; font-weight: 600; color: #FFFFFF;")
         t_layout.addWidget(self.trim_file_label)
 
-        # Scrubber slider
-        self.trim_slider = QSlider(Qt.Orientation.Horizontal)
-        self.trim_slider.sliderMoved.connect(self._seek_player)
-        t_layout.addWidget(self.trim_slider)
+        # Interactive Waveform with drag handles
+        self.waveform = WaveformTimeline()
+        self.waveform.rangeChanged.connect(self._on_waveform_range_changed)
+        self.waveform.seekRequested.connect(self._on_waveform_seek)
+        t_layout.addWidget(self.waveform)
 
         # Controls & Spinboxes
         ctrl_row = QHBoxLayout()
@@ -477,21 +480,23 @@ class AudioKitMainWindow(QMainWindow):
         ctrl_row.addWidget(self.time_label)
         ctrl_row.addStretch()
 
-        # Start & End Spinboxes
+        # Start & End Spinboxes (synchronized with waveform handles)
         ctrl_row.addWidget(QLabel("Start:"))
         self.spin_start = QDoubleSpinBox()
         self.spin_start.setRange(0.0, 9999.0)
-        self.spin_start.setSingleStep(0.5)
+        self.spin_start.setSingleStep(0.2)
         self.spin_start.setSuffix("s")
-        self.spin_start.setFixedWidth(80)
+        self.spin_start.setFixedWidth(84)
+        self.spin_start.valueChanged.connect(self._on_spin_changed)
         ctrl_row.addWidget(self.spin_start)
 
         ctrl_row.addWidget(QLabel("End:"))
         self.spin_end = QDoubleSpinBox()
         self.spin_end.setRange(0.0, 9999.0)
-        self.spin_end.setSingleStep(0.5)
+        self.spin_end.setSingleStep(0.2)
         self.spin_end.setSuffix("s")
-        self.spin_end.setFixedWidth(80)
+        self.spin_end.setFixedWidth(84)
+        self.spin_end.valueChanged.connect(self._on_spin_changed)
         ctrl_row.addWidget(self.spin_end)
 
         self.btn_trim_save = QPushButton("Save Trimmed Audio")
@@ -759,6 +764,7 @@ class AudioKitMainWindow(QMainWindow):
             self.spin_start.setValue(0.0)
             self.spin_end.setMaximum(dur)
             self.spin_end.setValue(dur)
+            self.waveform.load_audio(path)
             self.player.setSource(QUrl.fromLocalFile(path))
 
     def _display_cover(self, img_bytes):
@@ -898,32 +904,55 @@ class AudioKitMainWindow(QMainWindow):
         self.loudness_console.append(f">> Finished scanning and tagging {total} tracks.")
 
     # --- Trimmer Methods ---
+    def _on_waveform_range_changed(self, start, end):
+        self.spin_start.blockSignals(True)
+        self.spin_end.blockSignals(True)
+        self.spin_start.setValue(start)
+        self.spin_end.setValue(end)
+        self.spin_start.blockSignals(False)
+        self.spin_end.blockSignals(False)
+
+    def _on_spin_changed(self):
+        s = self.spin_start.value()
+        e = self.spin_end.value()
+        if e > s:
+            self.waveform.set_range(s, e)
+
+    def _on_waveform_seek(self, sec):
+        self.player.setPosition(int(sec * 1000))
+        self.waveform.set_playhead(sec)
+
     def _toggle_playback(self):
         if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.player.pause()
             self.btn_play_pause.setText("Play")
         else:
+            # Play starting from start handle if current position is outside range
+            cur_sec = self.player.position() / 1000
+            if cur_sec < self.spin_start.value() or cur_sec >= self.spin_end.value():
+                self.player.setPosition(int(self.spin_start.value() * 1000))
             self.player.play()
             self.btn_play_pause.setText("Pause")
 
     def _on_player_pos_changed(self, pos_ms):
         dur_ms = self.player.duration()
-        if dur_ms > 0:
-            self.trim_slider.setValue(int(pos_ms * 1000 / dur_ms))
-            cur_s = pos_ms / 1000
-            tot_s = dur_ms / 1000
-            self.time_label.setText(f"{int(cur_s//60)}:{int(cur_s%60):02d} / {int(tot_s//60)}:{int(tot_s%60):02d}")
+        cur_s = pos_ms / 1000
+        tot_s = dur_ms / 1000 if dur_ms > 0 else 0
+        self.time_label.setText(f"{int(cur_s//60)}:{int(cur_s%60):02d} / {int(tot_s//60)}:{int(tot_s%60):02d}")
+        self.waveform.set_playhead(cur_s)
+
+        # Loop or stop if reaching end of selection range
+        end_s = self.spin_end.value()
+        if end_s > 0 and cur_s >= end_s and self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+            self.btn_play_pause.setText("Play")
 
     def _on_player_duration_changed(self, dur_ms):
         tot_s = dur_ms / 1000
         self.spin_end.setMaximum(tot_s)
-        if self.spin_end.value() == 0.0 or self.spin_end.value() > tot_s:
-            self.spin_end.setValue(tot_s)
 
     def _seek_player(self, val):
-        dur_ms = self.player.duration()
-        if dur_ms > 0:
-            self.player.setPosition(int(val * dur_ms / 1000))
+        pass
 
     def _execute_trim(self):
         if not self.current_meta:
