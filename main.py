@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QHeaderView, QLineEdit, QFileDialog, QMessageBox, QProgressBar, QTextEdit
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QPixmap
+from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QPixmap, QIcon
 
 from core.engine import (
     scan_audio_files, read_audio_metadata, save_audio_metadata,
@@ -255,6 +255,11 @@ class AudioKitMainWindow(QMainWindow):
         self.setWindowTitle("Audio Kit")
         self.resize(1040, 700)
         self.setMinimumSize(900, 580)
+
+        # App Icon
+        icon_path = os.path.join(os.path.dirname(__file__), "assets", "icon.png")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
 
         self.file_list = []
         self.current_meta = None
@@ -720,7 +725,18 @@ class AudioKitMainWindow(QMainWindow):
 
 
 def main():
+    # Set Windows App User Model ID so taskbar shows proper icon instead of default python icon
+    try:
+        import ctypes
+        myappid = 'yebisu.audiokit.desktop.1.0'
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except Exception:
+        pass
+
     app = QApplication(sys.argv)
+    icon_path = os.path.join(os.path.dirname(__file__), "assets", "icon.png")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
     app.setStyleSheet(APP_QSS)
     win = AudioKitMainWindow()
     win.show()

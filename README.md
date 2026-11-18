@@ -1,49 +1,56 @@
 # Audio Kit
 
-A clean, minimalist desktop audio suite for tagging, hardware-compliant artwork encoding, and EBU R128 loudness normalization.
+A lightweight desktop audio utility for metadata editing, Baseline JPEG cover encoding, and EBU R128 loudness normalization.
 
-## Highlights
-- **Native Desktop Application**: Built with PyQt6 and packaged as a standalone Windows executable (`AudioKit.exe`) — no scripts or terminal setup required.
-- **Hardware-Compliant Cover Encoding**: Standardizes non-compliant and progressive artwork into Baseline RGB JPEG (Quality 95) for dedicated digital audio players.
-- **EBU R128 Loudness Engine**: Measures integrated loudness (-18.00 LUFS target) and true sample peaks to write non-destructive ReplayGain tags.
-- **Dual-Source Artwork Management**: Embed cover art by dropping images or extracting directly from existing music files.
+---
 
-## Architecture & Layout
+## Screenshots
+
+### Library & Tag Editor
+![Audio Kit Library](docs/images/library.png)
+*Track list, inline metadata editing, and cover management with one-click album inheritance.*
+
+### Loudness Normalizer (EBU R128)
+![Audio Kit Loudness](docs/images/loudness.png)
+*Integrated loudness scanning (-18.00 LUFS target) and true sample peak tagging.*
+
+---
+
+## Features
+
+- **Metadata Editor**: Edit standard tags (Title, Artist, Album, Track, Year, Genre) across FLAC and MP3 files.
+- **Hardware-Compliant Artwork**: Converts progressive JPEGs and non-RGB covers into standard **Baseline RGB JPEG (Quality 95)** for digital audio players and older hardware.
+- **Dual-Source Cover Art**: Drop an image file or drop an existing audio track into the cover slot to extract artwork, then click `Apply to All` to tag an entire album.
+- **Tag Deduplication**: Automatically cleans repeated multi-value artist and genre tags.
+- **ReplayGain Normalizer**: Measures integrated loudness using ITU-R BS.1770 / EBU R128 algorithms and writes standard ReplayGain tags.
+
+---
+
+## Tech Stack
+
+- **GUI**: PyQt6
+- **Metadata**: Mutagen
+- **Audio & Loudness**: Soundfile, pyloudnorm, NumPy
+- **Image Processing**: Pillow
+
+---
+
+## Running
+
+### Portable Binary
+Run the executable directly:
+```powershell
+.\dist\AudioKit\AudioKit.exe
 ```
-AudioKit/
-├── main.py                  # Desktop application entry point & layout
-├── core/
-│   └── engine.py            # Audio & tagging engine (Mutagen, Pillow, pyloudnorm)
-├── gui/
-│   ├── styles.py            # High-contrast minimalist dark stylesheet
-│   ├── widgets.py           # Reusable drop zones and components
-│   ├── tab_metadata.py      # Tag & Cover Editor tab
-│   ├── tab_walkman.py       # Baseline JPEG Converter tab
-│   ├── tab_replaygain.py    # ReplayGain Engine tab
-│   └── tab_transfer.py      # Artwork Transfer tab
-└── dist/
-    └── AudioKit/
-        └── AudioKit.exe     # Standalone portable Windows executable
-```
 
-## Running the Application
-
-### 1. Standalone Binary (Recommended)
-Run the compiled executable directly:
-```
-D:\Projects\Tools\AudioKit\dist\AudioKit\AudioKit.exe
-```
-
-### 2. From Source
+### From Source
 ```powershell
 pip install PyQt6 mutagen pillow soundfile pyloudnorm numpy
 python main.py
 ```
 
-## Building Executable
-```powershell
-pyinstaller --noconsole --name "AudioKit" --exclude-module torch --exclude-module torchvision --exclude-module matplotlib --add-data "core;core" --add-data "gui;gui" main.py
-```
+---
 
 ## License
-MIT License. Designed and developed by [Liam Andreu Gamboa (ye6isu)](https://github.com/ye6isu).
+
+[MIT License](LICENSE) — Liam Andreu Gamboa ([ye6isu](https://github.com/ye6isu))
