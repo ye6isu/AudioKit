@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.spec
+
+# Build outputs
+build/
+dist/
+*.exe
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# OS metadata
+Thumbs.db
+.DS_Store
+Desktop.ini
