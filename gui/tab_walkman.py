@@ -1,7 +1,7 @@
 """
-Tab 2: Walkman Cover Fixer (Baseline JPEG standardizer)
-Scans files/folders, detects progressive JPEGs and incompatible artwork,
-and converts them into Walkman-safe Baseline JPEG format.
+Tab 2: Baseline JPEG Converter (Hardware Compliance Engine)
+Scans audio files, detects non-baseline and progressive artwork,
+and converts them into compliant Baseline RGB JPEG format.
 """
 
 import os
@@ -12,19 +12,18 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from gui.widgets import FileDropZone
 from core.engine import (
-    scan_audio_files, extract_artwork, inspect_cover_art,
+    extract_artwork, inspect_cover_art,
     convert_to_baseline_jpeg, set_artwork, deduplicate_tags
 )
 from mutagen.flac import FLAC
 
-class FixerWorker(QThread):
-    progress = pyqtSignal(int, int, str) # current, total, log_message
-    finished = pyqtSignal(int, int)      # fixed_count, total_count
+class ConverterWorker(QThread):
+    progress = pyqtSignal(int, int, str)
+    finished = pyqtSignal(int, int)
 
-    def __init__(self, file_paths, max_dim=None):
+    def __init__(self, file_paths):
         super().__init__()
         self.file_paths = file_paths
-        self.max_dim = max_dim
 
     def run(self):
         total = len(self.file_paths)
@@ -39,83 +38,85 @@ class FixerWorker(QThread):
                     if info['needs_fix'] or info['is_progressive']:
                         set_artwork(path, raw_art, standardize_baseline=True)
                         fixed_count += 1
-                        msg = f"✓ Fixed art -> Baseline JPEG: {fname}"
+                        msg = f"[FIXED] {fname} -> Baseline RGB JPEG"
                     else:
-                        msg = f"• Already Baseline JPEG: {fname}"
+                        msg = f"[OK]    {fname} -> Already Baseline compliant"
                 else:
-                    msg = f"- No artwork embedded: {fname}"
+                    msg = f"[SKIP]  {fname} -> No embedded cover art"
 
-                # Deduplicate tags as well
                 ext = os.path.splitext(path)[1].lower()
                 if ext == '.flac':
                     flac_obj = FLAC(path)
                     if deduplicate_tags(flac_obj.tags):
                         flac_obj.save()
-                        msg += " (deduplicated tags)"
+                        msg += " (tags deduplicated)"
 
             except Exception as e:
-                msg = f"✗ Error processing {fname}: {e}"
+                msg = f"[ERR]   {fname}: {e}"
 
             self.progress.emit(idx + 1, total, msg)
 
         self.finished.emit(fixed_count, total)
 
 
-class WalkmanFixerTab(QWidget):
+class BaselineConverterTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.file_list = []
         self.worker = None
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 20, 24, 20)
+        layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(16)
 
         # Header
         head_layout = QVBoxLayout()
         head_layout.setSpacing(4)
-        title = QLabel("Walkman & DAP Cover Fixer")
-        title.setProperty("class", "SectionTitle")
-        desc = QLabel("Standardize artwork to Baseline RGB JPEG (Quality 95) for Sony Walkmans & legacy players")
-        desc.setProperty("class", "SectionDesc")
+        title = QLabel("BASELINE JPEG CONVERTER")
+        title.setProperty("class", "ViewHeader")
+        desc = QLabel("Standardize artwork to Baseline RGB JPEG (Quality 95) for dedicated and vintage hardware players")
+        desc.setProperty("class", "ViewSubheader")
         head_layout.addWidget(title)
         head_layout.addWidget(desc)
         layout.addLayout(head_layout)
 
         # Drop Zone
         self.drop_zone = FileDropZone(
-            title="Drop Music Files or Folders to Inspect Compatibility",
-            subtitle="Drop albums, FLACs, or MP3s to check artwork"
+            title="DROP TRACKS OR FOLDERS TO INSPECT ARTWORK ENCODING",
+            subtitle="Identifies progressive, CMYK, or non-standard JPEG/PNG tags"
         )
         self.drop_zone.files_dropped.connect(self.on_files_dropped)
         layout.addWidget(self.drop_zone)
 
-        # Table & Status
+        # Table
         self.table = QTableWidget()
         self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["File", "Format", "Art Status", "Action Needed"])
+        self.table.setHorizontalHeaderLabels(["FILE", "TYPE", "CURRENT ART SPEC", "STATUS"])
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.table.setColumnWidth(1, 60)
+        self.table.setColumnWidth(2, 220)
+        self.table.setColumnWidth(3, 110)
         layout.addWidget(self.table)
 
-        # Progress bar
+        # Gauge Progress
         self.progress_bar = QProgressBar()
         self.progress_bar.setVisible(False)
         layout.addWidget(self.progress_bar)
 
-        # Bottom Bar: Fix Button & Log console
+        # Action Bar
         bottom_layout = QHBoxLayout()
-        self.fix_btn = QPushButton("Standardize All Covers to Baseline JPEG")
+        self.fix_btn = QPushButton("CONVERT ALL TO BASELINE JPEG")
         self.fix_btn.setProperty("class", "PrimaryBtn")
         self.fix_btn.setEnabled(False)
         self.fix_btn.clicked.connect(self.start_fix)
         bottom_layout.addWidget(self.fix_btn)
         layout.addLayout(bottom_layout)
 
-        # Console
+        # Diagnostic Terminal
         self.console = QTextEdit()
         self.console.setObjectName("LogConsole")
         self.console.setReadOnly(True)
-        self.console.setFixedHeight(90)
+        self.console.setFixedHeight(95)
         layout.addWidget(self.console)
 
     def on_files_dropped(self, paths):
@@ -125,7 +126,7 @@ class WalkmanFixerTab(QWidget):
 
         for row, p in enumerate(paths):
             fname = os.path.basename(p)
-            ext = os.path.splitext(p)[1].upper()
+            ext = os.path.splitext(p)[1].upper().replace('.', '')
             self.table.setItem(row, 0, QTableWidgetItem(fname))
             self.table.setItem(row, 1, QTableWidgetItem(ext))
 
@@ -136,18 +137,21 @@ class WalkmanFixerTab(QWidget):
                 if info['is_progressive']:
                     art_status += " (Progressive)"
                 if info['needs_fix']:
-                    action = "⚠️ Needs Fix"
+                    status_str = "NEEDS FIX"
                     needs_fix_count += 1
                 else:
-                    action = "✓ Compatible"
+                    status_str = "COMPLIANT"
             else:
-                art_status = "No Cover"
-                action = "—"
+                art_status = "No Artwork"
+                status_str = "—"
 
-            self.table.setItem(row, 2, QTableWidgetItem(art_status))
-            self.table.setItem(row, 3, QTableWidgetItem(action))
+            item_spec = QTableWidgetItem(art_status)
+            item_status = QTableWidgetItem(status_str)
+            item_status.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.table.setItem(row, 2, item_spec)
+            self.table.setItem(row, 3, item_status)
 
-        self.console.append(f"Loaded {len(paths)} tracks. Found {needs_fix_count} track(s) needing Walkman baseline fix.")
+        self.console.append(f">> Scanned {len(paths)} tracks. {needs_fix_count} track(s) require Baseline conversion.")
         self.fix_btn.setEnabled(len(paths) > 0)
 
     def start_fix(self):
@@ -158,7 +162,7 @@ class WalkmanFixerTab(QWidget):
         self.progress_bar.setMaximum(len(self.file_list))
         self.progress_bar.setValue(0)
 
-        self.worker = FixerWorker(self.file_list)
+        self.worker = ConverterWorker(self.file_list)
         self.worker.progress.connect(self._on_progress)
         self.worker.finished.connect(self._on_finished)
         self.worker.start()
@@ -170,6 +174,5 @@ class WalkmanFixerTab(QWidget):
     def _on_finished(self, fixed_count, total_count):
         self.progress_bar.setVisible(False)
         self.fix_btn.setEnabled(True)
-        self.console.append(f"Completed! Fixed artwork for {fixed_count}/{total_count} tracks.")
-        # Refresh table
+        self.console.append(f">> Finished. {fixed_count} of {total_count} files standardized.")
         self.on_files_dropped(self.file_list)

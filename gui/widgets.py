@@ -1,8 +1,5 @@
 """
-Custom UI Widgets for Audio Kit
-- FileDropZone: Clean drag & drop zone accepting audio files and directories
-- ArtworkDropZone: Drag & drop zone specifically for image/cover art files
-- StatBadge: Minimalist pill badge showing tag info / status
+Custom UI Components for Audio Kit (Tactile / Industrial TE & Apple aesthetic)
 """
 
 import os
@@ -10,47 +7,42 @@ from PyQt6.QtWidgets import (
     QFrame, QVBoxLayout, QLabel, QPushButton, QHBoxLayout, QFileDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QPixmap, QImage
-from core.engine import SUPPORTED_AUDIO_EXTENSIONS, SUPPORTED_IMAGE_EXTENSIONS, scan_audio_files
+from PyQt6.QtGui import QDragEnterEvent, QDropEvent, QPixmap
+from core.engine import SUPPORTED_AUDIO_EXTENSIONS, SUPPORTED_IMAGE_EXTENSIONS, scan_audio_files, extract_artwork
 
 class FileDropZone(QFrame):
     files_dropped = pyqtSignal(list)
 
-    def __init__(self, title="Drag & Drop Audio Files or Folders", subtitle="Supports FLAC, MP3, M4A, OGG, Opus", parent=None):
+    def __init__(self, title="DROP AUDIO FILES OR FOLDERS", subtitle="FLAC • MP3 • M4A • OGG • OPUS", parent=None):
         super().__init__(parent)
         self.setProperty("class", "DropZone")
         self.setAcceptDrops(True)
-        self.setMinimumHeight(130)
+        self.setMinimumHeight(110)
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.setSpacing(6)
 
-        self.icon_label = QLabel("🎵")
-        self.icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.icon_label.setStyleSheet("font-size: 28px; background: transparent;")
-
         self.title_label = QLabel(title)
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.title_label.setStyleSheet("font-size: 14px; font-weight: 600; color: #F8FAFC; background: transparent;")
+        self.title_label.setStyleSheet("font-size: 11px; font-weight: 700; letter-spacing: 1px; color: #ECECED; background: transparent;")
 
         self.sub_label = QLabel(subtitle)
         self.sub_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.sub_label.setStyleSheet("font-size: 11px; color: #64748B; background: transparent;")
+        self.sub_label.setStyleSheet("font-size: 10px; font-weight: 500; color: #666670; letter-spacing: 0.5px; background: transparent;")
 
-        browse_btn = QPushButton("Browse Files")
-        browse_btn.setProperty("class", "SecondaryBtn")
-        browse_btn.setFixedWidth(120)
+        browse_btn = QPushButton("SELECT FILES")
+        browse_btn.setProperty("class", "GhostBtn")
+        browse_btn.setFixedWidth(110)
         browse_btn.clicked.connect(self._browse_files)
 
-        btn_container = QHBoxLayout()
-        btn_container.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        btn_container.addWidget(browse_btn)
+        btn_box = QHBoxLayout()
+        btn_box.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        btn_box.addWidget(browse_btn)
 
-        layout.addWidget(self.icon_label)
         layout.addWidget(self.title_label)
         layout.addWidget(self.sub_label)
-        layout.addLayout(btn_container)
+        layout.addLayout(btn_box)
 
     def _browse_files(self):
         files, _ = QFileDialog.getOpenFileNames(
@@ -73,7 +65,6 @@ class FileDropZone(QFrame):
             if os.path.exists(local_path):
                 paths.append(local_path)
         if paths:
-            # Expand directories to audio files
             resolved = scan_audio_files(paths)
             if resolved:
                 self.files_dropped.emit(resolved)
@@ -82,11 +73,13 @@ class FileDropZone(QFrame):
 
 class ArtworkDropZone(QFrame):
     """
-    Cover art display that allows clicking or dragging an image to replace artwork.
+    Cover art frame with dual source loading:
+    - Drag & drop image OR audio file
+    - Click to select image OR music file to extract from
     """
-    artwork_changed = pyqtSignal(bytes)  # Emits raw image bytes
+    artwork_changed = pyqtSignal(bytes)
 
-    def __init__(self, size=220, parent=None):
+    def __init__(self, size=190, parent=None):
         super().__init__(parent)
         self.setFixedSize(size, size)
         self.setProperty("class", "DropZone")
@@ -95,11 +88,11 @@ class ArtworkDropZone(QFrame):
 
         layout = QVBoxLayout(self)
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(6, 6, 6, 6)
 
-        self.preview_label = QLabel("No Cover\n(Drop Image Here)")
+        self.preview_label = QLabel("NO COVER\n(DROP IMAGE OR SONG)")
         self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview_label.setStyleSheet("color: #64748B; font-size: 12px; background: transparent;")
+        self.preview_label.setStyleSheet("color: #555560; font-size: 10px; font-weight: 600; letter-spacing: 0.5px; background: transparent;")
         self.preview_label.setScaledContents(True)
 
         layout.addWidget(self.preview_label)
@@ -111,30 +104,40 @@ class ArtworkDropZone(QFrame):
             pixmap.loadFromData(img_bytes)
             if not pixmap.isNull():
                 self.preview_label.setPixmap(pixmap.scaled(
-                    self.width() - 8, self.height() - 8,
+                    self.width() - 12, self.height() - 12,
                     Qt.AspectRatioMode.KeepAspectRatio,
                     Qt.TransformationMode.SmoothTransformation
                 ))
                 return
-        self.preview_label.setText("No Cover\n(Drop Image Here)")
+        self.preview_label.setText("NO COVER\n(DROP IMAGE OR SONG)")
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            f, _ = QFileDialog.getOpenFileName(
-                self, "Select Cover Artwork", "",
-                "Image Files (*.jpg *.jpeg *.png *.webp *.bmp)"
-            )
-            if f:
-                with open(f, 'rb') as fp:
-                    data = fp.read()
-                self.set_artwork(data)
-                self.artwork_changed.emit(data)
+    def choose_from_image(self):
+        f, _ = QFileDialog.getOpenFileName(
+            self, "Select Image File", "",
+            "Image Files (*.jpg *.jpeg *.png *.webp *.bmp *.tiff)"
+        )
+        if f:
+            with open(f, 'rb') as fp:
+                data = fp.read()
+            self.set_artwork(data)
+            self.artwork_changed.emit(data)
+
+    def choose_from_audio(self):
+        f, _ = QFileDialog.getOpenFileName(
+            self, "Select Audio File to Extract Art", "",
+            "Audio Files (*.flac *.mp3 *.m4a *.mp4 *.ogg)"
+        )
+        if f:
+            raw_art, _ = extract_artwork(f)
+            if raw_art:
+                self.set_artwork(raw_art)
+                self.artwork_changed.emit(raw_art)
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
             for url in event.mimeData().urls():
                 ext = os.path.splitext(url.toLocalFile())[1].lower()
-                if ext in SUPPORTED_IMAGE_EXTENSIONS:
+                if ext in SUPPORTED_IMAGE_EXTENSIONS or ext in SUPPORTED_AUDIO_EXTENSIONS:
                     event.acceptProposedAction()
                     return
         event.ignore()
@@ -149,4 +152,10 @@ class ArtworkDropZone(QFrame):
                 self.set_artwork(data)
                 self.artwork_changed.emit(data)
                 break
+            elif ext in SUPPORTED_AUDIO_EXTENSIONS:
+                raw_art, _ = extract_artwork(p)
+                if raw_art:
+                    self.set_artwork(raw_art)
+                    self.artwork_changed.emit(raw_art)
+                    break
         event.acceptProposedAction()

@@ -1,6 +1,7 @@
 """
-Main Window for Audio Kit
-Hosts sidebar navigation and dedicated functional views.
+Audio Kit Main Application Window
+Refined Teenage Engineering & Apple utility aesthetic:
+Matte chassis, tactile navigation sidebar, mechanical keycap buttons.
 """
 
 import sys
@@ -10,22 +11,20 @@ from PyQt6.QtWidgets import (
     QFrame, QLabel, QPushButton, QStackedWidget
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QIcon
 
 from gui.styles import STYLE_QSS
 from gui.tab_metadata import MetadataEditorTab
-from gui.tab_walkman import WalkmanFixerTab
+from gui.tab_walkman import BaselineConverterTab
 from gui.tab_replaygain import ReplayGainTab
 from gui.tab_transfer import ArtTransferTab
 
 class AudioKitMainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Audio Kit")
-        self.resize(1080, 720)
-        self.setMinimumSize(920, 600)
+        self.setWindowTitle("AUDIO KIT")
+        self.resize(1120, 740)
+        self.setMinimumSize(960, 620)
 
-        # Main Central Container
         central_widget = QWidget()
         central_widget.setObjectName("MainContainer")
         self.setCentralWidget(central_widget)
@@ -39,24 +38,31 @@ class AudioKitMainWindow(QMainWindow):
         sidebar.setObjectName("Sidebar")
         sidebar.setFixedWidth(220)
         side_layout = QVBoxLayout(sidebar)
-        side_layout.setContentsMargins(16, 24, 16, 24)
-        side_layout.setSpacing(8)
+        side_layout.setContentsMargins(18, 28, 18, 28)
+        side_layout.setSpacing(10)
 
-        # Branding
-        title_label = QLabel("Audio Kit")
-        title_label.setObjectName("AppTitle")
-        sub_label = QLabel("Audio & Metadata Studio")
-        sub_label.setObjectName("AppSubtitle")
-        side_layout.addWidget(title_label)
+        # Branding Header
+        brand_row = QHBoxLayout()
+        title_label = QLabel("AUDIO KIT")
+        title_label.setObjectName("AppBrand")
+        brand_tag = QLabel("STUDIO")
+        brand_tag.setObjectName("BrandTag")
+        brand_row.addWidget(title_label)
+        brand_row.addWidget(brand_tag)
+        brand_row.addStretch()
+        side_layout.addLayout(brand_row)
+
+        sub_label = QLabel("AUDIO UTILITY SYSTEM")
+        sub_label.setStyleSheet("font-size: 9px; font-weight: 700; color: #585862; letter-spacing: 1px; margin-bottom: 16px;")
         side_layout.addWidget(sub_label)
 
-        # Nav Buttons
+        # Navigation Items
         self.nav_buttons = []
         nav_items = [
-            ("🏷️  Metadata & Art", 0),
-            ("✨  Walkman Fixer", 1),
-            ("📊  ReplayGain 2.0", 2),
-            ("🔄  Art Transfer", 3)
+            ("TAG & ART EDITOR", 0),
+            ("BASELINE CONVERTER", 1),
+            ("REPLAYGAIN ENGINE", 2),
+            ("ARTWORK TRANSFER", 3)
         ]
 
         for text, index in nav_items:
@@ -69,30 +75,35 @@ class AudioKitMainWindow(QMainWindow):
 
         side_layout.addStretch()
 
-        # Footer Info
-        footer = QLabel("v1.0.0 • EBU R128 & Baseline JPEG")
-        footer.setStyleSheet("color: #475569; font-size: 10px; padding-left: 4px;")
-        side_layout.addWidget(footer)
+        # Machine Specs Footer
+        footer_box = QVBoxLayout()
+        footer_box.setSpacing(2)
+        f_ver = QLabel("SYS VER 1.0.0")
+        f_ver.setStyleSheet("color: #4C4C54; font-size: 9px; font-weight: 700; letter-spacing: 0.8px;")
+        f_spec = QLabel("EBU R128 • BASELINE JPEG")
+        f_spec.setStyleSheet("color: #3C3C44; font-size: 8px; font-weight: 600; letter-spacing: 0.5px;")
+        footer_box.addWidget(f_ver)
+        footer_box.addWidget(f_spec)
+        side_layout.addLayout(footer_box)
 
         root_layout.addWidget(sidebar)
 
-        # --- Content Area (Stacked Widget) ---
+        # --- Content Area ---
         self.content_stack = QStackedWidget()
         self.content_stack.setObjectName("ContentFrame")
 
         self.tab_metadata = MetadataEditorTab()
-        self.tab_walkman = WalkmanFixerTab()
+        self.tab_converter = BaselineConverterTab()
         self.tab_replaygain = ReplayGainTab()
         self.tab_transfer = ArtTransferTab()
 
         self.content_stack.addWidget(self.tab_metadata)
-        self.content_stack.addWidget(self.tab_walkman)
+        self.content_stack.addWidget(self.tab_converter)
         self.content_stack.addWidget(self.tab_replaygain)
         self.content_stack.addWidget(self.tab_transfer)
 
         root_layout.addWidget(self.content_stack)
 
-        # Default select first tab
         self._switch_tab(0)
 
     def _switch_tab(self, index):
