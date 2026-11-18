@@ -486,7 +486,7 @@ class AudioKitMainWindow(QMainWindow):
         self.spin_start.setRange(0.0, 9999.0)
         self.spin_start.setSingleStep(0.2)
         self.spin_start.setSuffix("s")
-        self.spin_start.setFixedWidth(84)
+        self.spin_start.setFixedWidth(110)
         self.spin_start.valueChanged.connect(self._on_spin_changed)
         ctrl_row.addWidget(self.spin_start)
 
@@ -495,7 +495,7 @@ class AudioKitMainWindow(QMainWindow):
         self.spin_end.setRange(0.0, 9999.0)
         self.spin_end.setSingleStep(0.2)
         self.spin_end.setSuffix("s")
-        self.spin_end.setFixedWidth(84)
+        self.spin_end.setFixedWidth(110)
         self.spin_end.valueChanged.connect(self._on_spin_changed)
         ctrl_row.addWidget(self.spin_end)
 
